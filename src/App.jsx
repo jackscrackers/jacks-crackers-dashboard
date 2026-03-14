@@ -1,10 +1,10 @@
 import { useState, useEffect } from "react";
 import React from "react";
 
-const APPS_SCRIPT_URL = "/api/proxy";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxp0OOtSZKJ_bW8kSoU7Bc7PKYNEGy9bScswDWTjN8CbxaDg9Wwp5tymCDc_6tMdq_g/exec";
 const FLAVORS = ["Red Wine","White Wine","Tomato Basil","Garlic Herb","Buttermilk Bacon","Lavender Rosemary","Cracked Pepper & Sage","Spicy Chocolate Mint","Chocolate Graham","Graham Crackers"];
 const SIZES = [{key:"s45",label:"4.5oz",oz:4.5,mult:1},{key:"s15",label:"15oz",oz:15,mult:4},{key:"s450",label:"45oz",oz:45,mult:10}];
-const ROLES = [{id:"admin",icon:"🧑‍💼",name:"Kevin",desc:"Full dashboard"},{id:"baker",icon:"🥐",name:"Kitchen",desc:"Log completed bakes"},{id:"bagger",icon:"📦",name:"Bagger",desc:"Log bags filled"}];
+const ROLES = [{id:"admin",icon:"🧑‍💼",name:"Kevin",desc:"Full dashboard"},{id:"baker",icon:"🥐",name:"Kitchen",desc:"Log completed bakes"},{id:"bagger",icon:"📦",name:"Bag Construction",desc:"Log bags made"}];
 
 const floorBags=(oz,sizeOz)=>oz<=0?0:Math.floor(oz/sizeOz);
 const remOz=(oz,sizeOz)=>oz<=0?0:parseFloat((oz-floorBags(oz,sizeOz)*sizeOz).toFixed(2));
@@ -25,15 +25,15 @@ const MOCK_INV=FLAVORS.map((flavor,i)=>({flavor,bags:[48,52,18,35,22,14,40,28,9,
 const MOCK_ORDERS=[{id:"INV-101",customer:"Hanover Co-op",channel:"Faire",status:"pending",amount:186},{id:"INV-100",customer:"Website Retail",channel:"WooCommerce",status:"shipped",amount:34},{id:"INV-99",customer:"Monadnock Market",channel:"Direct",status:"shipped",amount:220},{id:"INV-98",customer:"Live Sales",channel:"Direct",status:"shipped",amount:62},{id:"INV-97",customer:"Peterborough Nat.",channel:"Direct",status:"pending",amount:155}];
 
 async function apiCall(action,payload={}){
-  if(APPS_SCRIPT_URL==="YOUR_APPS_SCRIPT_URL_HERE"){
-    await new Promise(r=>setTimeout(r,400));
-    if(action==="getInventory") return{success:true,inventory:MOCK_INV};
-    if(action==="getOrders")    return{success:true,orders:MOCK_ORDERS};
-    if(action==="getAlerts")    return{success:true,alerts:[]};
-    if(action==="verifyPin")    return{success:true,valid:true}; // demo: any PIN works
-    return{success:true,demo:true};
-  }
-  try{const res=await fetch(APPS_SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})});return await res.json();}catch(e){return{success:false,error:e.message};}
+  try{
+    if(action==="verifyPin"){
+      const params=new URLSearchParams({action,role:payload.role,pin:payload.pin});
+      const res=await fetch(`${APPS_SCRIPT_URL}?${params}`);
+      return await res.json();
+    }
+    const res=await fetch(APPS_SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})});
+    return await res.json();
+  }catch(e){return{success:false,error:e.message};}
 }
 
 const CSS=`
@@ -196,13 +196,20 @@ function BakerForm(){
 
   function setTotalOz(flavor,val){
     const oz=Math.max(0,val);
-    setFd(d=>({...d,[flavor]:{...d[flavor],totalOz:oz,split:{s45:0,s15:0,s450:0}}}));
+    // Auto-fill all oz into 4.5oz — larger sizes start at 0
+    setFd(d=>({...d,[flavor]:{...d[flavor],totalOz:oz,split:{s45:oz,s15:0,s450:0}}}));
   }
 
   function setSplit(flavor,skey,val){
     setFd(d=>{
       const cur=d[flavor]||emptyFD();
-      return{...d,[flavor]:{...cur,split:{...cur.split,[skey]:Math.max(0,val)}}};
+      const newSplit={...cur.split,[skey]:Math.max(0,parseFloat(val)||0)};
+      // Recalculate 4.5oz as remainder after larger sizes
+      if(skey!=="s45"){
+        const usedByLarger=(newSplit.s15||0)+(newSplit.s450||0);
+        newSplit.s45=Math.max(0,parseFloat((cur.totalOz-usedByLarger).toFixed(2)));
+      }
+      return{...d,[flavor]:{...cur,split:newSplit}};
     });
   }
 
@@ -305,28 +312,44 @@ function BakerForm(){
               {/* total oz */}
               <div className="oz-row" style={{marginBottom:14,paddingBottom:12,borderBottom:"0.5px solid var(--bdr)"}}>
                 <span style={{fontSize:12,color:"var(--tx)",fontWeight:500,marginRight:8,flexShrink:0}}>Total oz</span>
-                <div className="oz-ctrl">
-                  <button className="q-btn" onClick={()=>setTotalOz(active,data.totalOz-1)}>−</button>
-                  <span className={`q-val${data.totalOz>0?" nz":""}`}>{data.totalOz}</span>
-                  <button className="q-btn" onClick={()=>setTotalOz(active,data.totalOz+1)}>+</button>
-                </div>
+                <input
+                  type="number" min="0" inputMode="numeric"
+                  value={data.totalOz||""}
+                  placeholder="0"
+                  onChange={e=>setTotalOz(active,parseFloat(e.target.value)||0)}
+                  style={{width:80,padding:"6px 10px",border:"0.5px solid var(--bdr2)",borderRadius:"var(--r)",
+                    background:"var(--surf2)",color:"var(--tx)",fontFamily:"var(--mono)",fontSize:14,
+                    fontWeight:500,textAlign:"right"}}
+                />
               </div>
 
               {/* size split */}
               {data.totalOz>0&&(
                 <>
-                  <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>Split {data.totalOz} oz across sizes:</p>
+                  <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>Enter 15oz and 45oz quantities — 4.5oz fills automatically:</p>
                   {SIZES.map(sz=>{
                     const soz=data.split[sz.key]||0;
                     const b=floorBags(soz,sz.oz);const r=remOz(soz,sz.oz);
+                    const isAuto=sz.key==="s45";
                     return(
                       <div className="oz-row" key={sz.key}>
-                        <span className="oz-lbl">{sz.label}</span>
-                        <div className="oz-ctrl">
-                          <button className="q-btn" onClick={()=>setSplit(active,sz.key,soz-1)}>−</button>
-                          <span className={`q-val${soz>0?" nz":""}`}>{soz}</span>
-                          <button className="q-btn" onClick={()=>setSplit(active,sz.key,soz+1)}>+</button>
-                        </div>
+                        <span className="oz-lbl">{sz.label}{isAuto&&<span style={{fontSize:9,color:"var(--hi)",marginLeft:4}}>auto</span>}</span>
+                        {isAuto?(
+                          <input
+                            type="number" readOnly value={soz||""}
+                            style={{width:80,padding:"6px 10px",
+                              border:"0.5px solid var(--bdr)",borderRadius:"var(--r)",
+                              background:"var(--surf)",color:"var(--mu)",
+                              fontFamily:"var(--mono)",fontSize:14,fontWeight:500,
+                              textAlign:"right",cursor:"default"}}
+                          />
+                        ):(
+                          <div className="oz-ctrl">
+                            <button className="q-btn" onClick={()=>setSplit(active,sz.key,Math.max(0,soz-sz.oz))}>−</button>
+                            <span className={`q-val${soz>0?" nz":""}`}>{soz}</span>
+                            <button className="q-btn" onClick={()=>setSplit(active,sz.key,soz+sz.oz)}>+</button>
+                          </div>
+                        )}
                         <div className="oz-conv">
                           {soz>0&&<><span className="bags">{b} bag{b!==1?"s":""}</span>{r>0&&<span className="rem"> +{r}oz</span>}</>}
                         </div>
@@ -420,7 +443,7 @@ function BaggerForm(){
   }
   return(
     <div className="content">
-      <div className="form-hdr"><h2>Log bags filled</h2><p>Enter the number of bags filled per flavor for this session.</p></div>
+      <div className="form-hdr"><h2>Log bags made</h2><p>Enter the number of bags made per flavor for this session.</p></div>
       {FLAVORS.map(f=>(
         <div key={f} className="bf-row">
           <span className="bf-name">{f}</span>
