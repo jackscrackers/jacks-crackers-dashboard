@@ -32,8 +32,16 @@ async function apiCall(action,payload={}){
     if(action==="getAlerts")    return{success:true,alerts:[]};
     if(action==="verifyPin")    return{success:true,valid:true}; // demo: any PIN works
     return{success:true,demo:true};
-  }
-  try{const res=await fetch(APPS_SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})});return await res.json();}catch(e){return{success:false,error:e.message};}
+}
+  try{
+    if(action==="verifyPin"){
+      const params=new URLSearchParams({action,role:payload.role,pin:payload.pin});
+      const res=await fetch(`${APPS_SCRIPT_URL}?${params}`);
+      return await res.json();
+    }
+    const res=await fetch(APPS_SCRIPT_URL,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({action,...payload})});
+    return await res.json();
+  }catch(e){return{success:false,error:e.message};}
 }
 
 const CSS=`
