@@ -25,14 +25,6 @@ const MOCK_INV=FLAVORS.map((flavor,i)=>({flavor,bags:[48,52,18,35,22,14,40,28,9,
 const MOCK_ORDERS=[{id:"INV-101",customer:"Hanover Co-op",channel:"Faire",status:"pending",amount:186},{id:"INV-100",customer:"Website Retail",channel:"WooCommerce",status:"shipped",amount:34},{id:"INV-99",customer:"Monadnock Market",channel:"Direct",status:"shipped",amount:220},{id:"INV-98",customer:"Live Sales",channel:"Direct",status:"shipped",amount:62},{id:"INV-97",customer:"Peterborough Nat.",channel:"Direct",status:"pending",amount:155}];
 
 async function apiCall(action,payload={}){
-  if(APPS_SCRIPT_URL==="YOUR_APPS_SCRIPT_URL_HERE"){
-    await new Promise(r=>setTimeout(r,400));
-    if(action==="getInventory") return{success:true,inventory:MOCK_INV};
-    if(action==="getOrders")    return{success:true,orders:MOCK_ORDERS};
-    if(action==="getAlerts")    return{success:true,alerts:[]};
-    if(action==="verifyPin")    return{success:true,valid:true}; // demo: any PIN works
-    return{success:true,demo:true};
-}
   try{
     if(action==="verifyPin"){
       const params=new URLSearchParams({action,role:payload.role,pin:payload.pin});
