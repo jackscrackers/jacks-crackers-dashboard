@@ -117,8 +117,8 @@ html,body{height:100%;background:var(--bg);font-family:var(--mono);color:var(--t
 .q-btn:active{background:var(--bdr2)}
 .q-val{font-size:15px;font-weight:500;font-family:var(--serif);min-width:36px;text-align:center}
 .q-val.nz{color:var(--gn-m)}
-.oz-conv{font-size:11px;text-align:right;min-width:80px;color:var(--hi)}
-.oz-conv .bags{color:var(--gn-m);font-weight:500}.oz-conv .rem{color:var(--am-m)}
+.oz-conv{font-size:15px;text-align:right;min-width:80px;color:var(--hi)}
+.oz-conv .bags{color:var(--gn-m);font-weight:500}.oz-conv .rem{color:var(--am-m);font-size:12px}
 .ab-wrap{height:4px;background:var(--bdr);border-radius:2px;overflow:hidden;margin-top:10px}
 .ab{height:100%;border-radius:2px;transition:width 0.2s ease}
 .ab.ok{background:var(--gn-m)}.ab.over{background:var(--co-m)}.ab.partial{background:var(--am-m)}
