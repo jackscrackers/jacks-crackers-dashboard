@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import React from "react";
 
-const APPS_SCRIPT_URL = "/api/proxy";
+const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzy58OU7c0PIq8QI4tNRAbo06_tUJ8d7EsL8bUS8WB6pj0VhE6Kp7uz_fy3Byv6Pn4P/exec";
 const FLAVORS = ["Red Wine","White Wine","Tomato Basil","Garlic Herb","Buttermilk Bacon","Lavender Rosemary","Cracked Pepper & Sage","Spicy Chocolate Mint","Chocolate Graham","Graham Crackers"];
 const SIZES = [{key:"s45",label:"4.5oz",oz:4.5,mult:1},{key:"s15",label:"15oz",oz:15,mult:4},{key:"s450",label:"45oz",oz:45,mult:10}];
 const ROLES = [{id:"admin",icon:"🧑‍💼",name:"Kevin",desc:"Full dashboard"},{id:"baker",icon:"🥐",name:"Kitchen",desc:"Log completed bakes"},{id:"bagger",icon:"📦",name:"Bag Construction",desc:"Log bags made"}];
@@ -117,8 +117,8 @@ html,body{height:100%;background:var(--bg);font-family:var(--mono);color:var(--t
 .q-btn:active{background:var(--bdr2)}
 .q-val{font-size:15px;font-weight:500;font-family:var(--serif);min-width:36px;text-align:center}
 .q-val.nz{color:var(--gn-m)}
-.oz-conv{font-size:15px;text-align:right;min-width:80px;color:var(--hi)}
-.oz-conv .bags{color:var(--gn-m);font-weight:500}.oz-conv .rem{color:var(--am-m);font-size:12px}
+.oz-conv{font-size:11px;text-align:right;min-width:80px;color:var(--hi)}
+.oz-conv .bags{color:var(--gn-m);font-weight:500}.oz-conv .rem{color:var(--am-m)}
 .ab-wrap{height:4px;background:var(--bdr);border-radius:2px;overflow:hidden;margin-top:10px}
 .ab{height:100%;border-radius:2px;transition:width 0.2s ease}
 .ab.ok{background:var(--gn-m)}.ab.over{background:var(--co-m)}.ab.partial{background:var(--am-m)}
