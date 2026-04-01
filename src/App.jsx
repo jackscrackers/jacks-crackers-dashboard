@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import React from "react";
 
-const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzy58OU7c0PIq8QI4tNRAbo06_tUJ8d7EsL8bUS8WB6pj0VhE6Kp7uz_fy3Byv6Pn4P/exec";
+const APPS_SCRIPT_URL = "/api/proxy";
 const FLAVORS = ["Red Wine","White Wine","Tomato Basil","Garlic Herb","Buttermilk Bacon","Lavender Rosemary","Cracked Pepper & Sage","Spicy Chocolate Mint","Chocolate Graham","Graham Crackers"];
 const SIZES = [{key:"s45",label:"4.5oz",oz:4.5,mult:1},{key:"s15",label:"15oz",oz:15,mult:4},{key:"s450",label:"45oz",oz:45,mult:10}];
 const ROLES = [{id:"admin",icon:"🧑‍💼",name:"Kevin",desc:"Full dashboard"},{id:"baker",icon:"🥐",name:"Kitchen",desc:"Log completed bakes"},{id:"bagger",icon:"📦",name:"Bag Construction",desc:"Log bags made"}];
@@ -117,8 +117,8 @@ html,body{height:100%;background:var(--bg);font-family:var(--mono);color:var(--t
 .q-btn:active{background:var(--bdr2)}
 .q-val{font-size:15px;font-weight:500;font-family:var(--serif);min-width:36px;text-align:center}
 .q-val.nz{color:var(--gn-m)}
-.oz-conv{font-size:11px;text-align:right;min-width:80px;color:var(--hi)}
-.oz-conv .bags{color:var(--gn-m);font-weight:500}.oz-conv .rem{color:var(--am-m)}
+.oz-conv{font-size:15px;text-align:right;min-width:80px;color:var(--hi)}
+.oz-conv .bags{color:var(--gn-m);font-weight:500}.oz-conv .rem{color:var(--am-m);font-size:12px}
 .ab-wrap{height:4px;background:var(--bdr);border-radius:2px;overflow:hidden;margin-top:10px}
 .ab{height:100%;border-radius:2px;transition:width 0.2s ease}
 .ab.ok{background:var(--gn-m)}.ab.over{background:var(--co-m)}.ab.partial{background:var(--am-m)}
@@ -158,7 +158,6 @@ html,body{height:100%;background:var(--bg);font-family:var(--mono);color:var(--t
 `;
 
 
-// ── SHARED ────────────────────────────────────────────────────────────────────
 function Panel({title,dot,children}){
   return <div className="panel"><div className="panel-title"><span className="pdot" style={{background:dot}}/>{title}</div>{children}</div>;
 }
@@ -179,7 +178,6 @@ function StepBar({steps,current}){
   );
 }
 
-// ── BAKER FORM ────────────────────────────────────────────────────────────────
 function BakerForm(){
   const [step,setStep]=useState(0);
   const [selected,setSelected]=useState(new Set());
@@ -196,7 +194,6 @@ function BakerForm(){
 
   function setTotalOz(flavor,val){
     const oz=Math.max(0,val);
-    // Auto-fill all oz into 4.5oz — larger sizes start at 0
     setFd(d=>({...d,[flavor]:{...d[flavor],totalOz:oz,split:{s45:oz,s15:0,s450:0}}}));
   }
 
@@ -204,7 +201,6 @@ function BakerForm(){
     setFd(d=>{
       const cur=d[flavor]||emptyFD();
       const newSplit={...cur.split,[skey]:Math.max(0,parseFloat(val)||0)};
-      // Recalculate 4.5oz as remainder after larger sizes
       if(skey!=="s45"){
         const usedByLarger=(newSplit.s15||0)+(newSplit.s450||0);
         newSplit.s45=Math.max(0,parseFloat((cur.totalOz-usedByLarger).toFixed(2)));
@@ -265,7 +261,6 @@ function BakerForm(){
       </div>
       <StepBar steps={["Flavors","Ounces","Review"]} current={step}/>
 
-      {/* STEP 0: SELECT FLAVORS */}
       {step===0&&(
         <>
           <p style={{fontSize:12,color:"var(--mu)",marginBottom:12}}>Which flavors were baked this session?</p>
@@ -283,13 +278,11 @@ function BakerForm(){
         </>
       )}
 
-      {/* STEP 1: OZ ENTRY */}
       {step===1&&active&&(()=>{
         const data=fd[active]||emptyFD();
         const alloc=getAlloc(active);
         return(
           <>
-            {/* flavor nav pills */}
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
               {selFlavors.map((f,i)=>{
                 const done=(fd[f]||emptyFD()).totalOz>0&&i!==fi;
@@ -309,7 +302,6 @@ function BakerForm(){
                 </span>
               </div>
 
-              {/* total oz */}
               <div className="oz-row" style={{marginBottom:14,paddingBottom:12,borderBottom:"0.5px solid var(--bdr)"}}>
                 <span style={{fontSize:12,color:"var(--tx)",fontWeight:500,marginRight:8,flexShrink:0}}>Total oz</span>
                 <input
@@ -323,7 +315,6 @@ function BakerForm(){
                 />
               </div>
 
-              {/* size split */}
               {data.totalOz>0&&(
                 <>
                   <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>Enter 15oz and 45oz quantities — 4.5oz fills automatically:</p>
@@ -376,7 +367,6 @@ function BakerForm(){
         );
       })()}
 
-      {/* STEP 2: REVIEW */}
       {step===2&&summary&&(
         <>
           <div className="sum-panel">
@@ -428,7 +418,6 @@ function BakerForm(){
   );
 }
 
-// ── BAGGER FORM ───────────────────────────────────────────────────────────────
 function BaggerForm(){
   const [qtys,setQtys]=useState(emptyQtys());
   const [status,setStatus]=useState(null);
@@ -464,7 +453,6 @@ function BaggerForm(){
   );
 }
 
-// ── ADMIN DASHBOARD ───────────────────────────────────────────────────────────
 function AdminDashboard(){
   const [tab,setTab]=useState("today");
   const [inv,setInv]=useState(MOCK_INV);
@@ -490,7 +478,6 @@ function AdminDashboard(){
 
   const unread=alerts.length;
 
-  // Format relative time for alert timestamps
   function relTime(ts){
     try{
       const diff=Date.now()-new Date(ts).getTime();
@@ -510,11 +497,7 @@ function AdminDashboard(){
           <button key={t} className={`nav-btn${tab===t?" active":""}`} onClick={()=>setTab(t)}>
             {t}
             {t==="today"&&unread>0&&(
-              <span style={{
-                display:"inline-flex",alignItems:"center",justifyContent:"center",
-                width:16,height:16,borderRadius:"50%",background:"var(--co-m)",
-                color:"#fff",fontSize:9,fontWeight:700,marginLeft:6,verticalAlign:"middle",
-              }}>{unread}</span>
+              <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--co-m)",color:"#fff",fontSize:9,fontWeight:700,marginLeft:6,verticalAlign:"middle"}}>{unread}</span>
             )}
           </button>
         ))}
@@ -528,45 +511,28 @@ function AdminDashboard(){
               <div className="metric m-blue"><div className="m-label">Revenue 7d</div><div className="m-val">$1,240</div><div className="m-delta">all channels</div></div>
               <div className="metric m-coral"><div className="m-label">Low stock</div><div className="m-val">2</div><div className="m-delta">below 20 bags</div></div>
             </div>
-
-            {/* ── Production notifications ── */}
             {unread>0&&(
               <div className="panel" style={{marginBottom:12}}>
                 <div className="panel-title">
                   <span className="pdot" style={{background:"var(--co-m)"}}/>
                   production updates
-                  <span style={{marginLeft:"auto",fontSize:10,background:"var(--co-bg)",color:"var(--co)",
-                    padding:"2px 8px",borderRadius:10,fontWeight:500}}>{unread} new</span>
+                  <span style={{marginLeft:"auto",fontSize:10,background:"var(--co-bg)",color:"var(--co)",padding:"2px 8px",borderRadius:10,fontWeight:500}}>{unread} new</span>
                 </div>
                 {alerts.map(a=>(
-                  <div key={a.id} style={{
-                    display:"flex",alignItems:"flex-start",gap:10,
-                    padding:"10px 0",borderBottom:"0.5px solid var(--bdr)",
-                  }}>
-                    <div style={{
-                      width:22,height:22,borderRadius:6,flexShrink:0,marginTop:1,
-                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,
-                      background:a.type==="bake"?"var(--am-bg)":"var(--tl-bg)",
-                      color:a.type==="bake"?"var(--am)":"var(--tl)",
-                    }}>
+                  <div key={a.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0",borderBottom:"0.5px solid var(--bdr)"}}>
+                    <div style={{width:22,height:22,borderRadius:6,flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,background:a.type==="bake"?"var(--am-bg)":"var(--tl-bg)",color:a.type==="bake"?"var(--am)":"var(--tl)"}}>
                       {a.type==="bake"?"B":"P"}
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:12,fontWeight:500}}>{a.title}</div>
-                      <div style={{fontSize:11,color:"var(--mu)",marginTop:2,
-                        whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.summary}</div>
+                      <div style={{fontSize:11,color:"var(--mu)",marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.summary}</div>
                       <div style={{fontSize:10,color:"var(--hi)",marginTop:2}}>{relTime(a.timestamp)}</div>
                     </div>
-                    <button onClick={()=>dismiss(a.id)} style={{
-                      fontSize:14,color:"var(--hi)",background:"none",border:"none",
-                      cursor:"pointer",padding:"0 4px",lineHeight:1,flexShrink:0,
-                      fontFamily:"var(--mono)",marginTop:2,
-                    }}>×</button>
+                    <button onClick={()=>dismiss(a.id)} style={{fontSize:14,color:"var(--hi)",background:"none",border:"none",cursor:"pointer",padding:"0 4px",lineHeight:1,flexShrink:0,fontFamily:"var(--mono)",marginTop:2}}>×</button>
                   </div>
                 ))}
               </div>
             )}
-
             <Panel title="Recent orders" dot="var(--bl-m)">
               {orders.slice(0,5).map(o=>{const cs=chStyle(o.channel);return(
                 <div className="order-row" key={o.id}>
@@ -587,9 +553,9 @@ function AdminDashboard(){
               );})}
             </Panel>
             <Panel title="System alerts" dot="var(--am-m)">
-              <div className="alert-row"><div className="a-icon a-warn">!</div><div><div>Choc Graham 15oz</div><span className="a-sub">SKU unmapped in SOS</span></div></div>
-              <div className="alert-row"><div className="a-icon a-err">!</div><div><div>Spicy Choc Mint 45oz</div><span className="a-sub">column AD pending</span></div></div>
-              <div className="alert-row"><div className="a-icon a-info">i</div><div><div>INV-97</div><span className="a-sub">2 days without fulfillment</span></div></div>
+              <div className="a-row"><div className="a-icon a-warn">!</div><div><div>Choc Graham 15oz</div><span className="a-sub">SKU unmapped in SOS</span></div></div>
+              <div className="a-row"><div className="a-icon a-err">!</div><div><div>Spicy Choc Mint 45oz</div><span className="a-sub">column AD pending</span></div></div>
+              <div className="a-row"><div className="a-icon a-info">i</div><div><div>INV-97</div><span className="a-sub">2 days without fulfillment</span></div></div>
             </Panel>
             <Panel title="Integrations" dot="var(--hi)">
               <div className="int-grid">
@@ -626,9 +592,8 @@ function AdminDashboard(){
   );
 }
 
-// ── PIN SCREEN ────────────────────────────────────────────────────────────────
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS   = 5 * 60 * 1000; // 5 minutes
+const LOCKOUT_MS   = 5 * 60 * 1000;
 
 function PinScreen({ role, onSuccess, onBack }) {
   const [digits, setDigits]       = useState([]);
@@ -638,8 +603,6 @@ function PinScreen({ role, onSuccess, onBack }) {
   const [checking, setChecking]   = useState(false);
 
   const r = ROLES.find(x => x.id === role);
-
-  // Check lockout on mount / digit change
   const isLocked = lockedUntil && Date.now() < lockedUntil;
   const remaining = isLocked ? Math.ceil((lockedUntil - Date.now()) / 1000) : 0;
 
@@ -667,9 +630,7 @@ function PinScreen({ role, onSuccess, onBack }) {
     setError("");
     const next = [...digits, d];
     setDigits(next);
-    if (next.length === 4) {
-      checkPin(next.join(""));
-    }
+    if (next.length === 4) { checkPin(next.join("")); }
   }
 
   function del() {
@@ -685,9 +646,7 @@ function PinScreen({ role, onSuccess, onBack }) {
       <div className="pin-card">
         <div className="pin-role-icon">{r?.icon}</div>
         <div className="pin-role-name">{r?.name}</div>
-        <div className="pin-prompt">
-          {isLocked ? `Locked — try again in ${remaining}s` : "Enter your PIN to continue"}
-        </div>
+        <div className="pin-prompt">{isLocked ? `Locked — try again in ${remaining}s` : "Enter your PIN to continue"}</div>
         <div className="pin-dots">
           {[0,1,2,3].map(i => (
             <div key={i} className={`pin-dot${digits.length > i ? " filled" : ""}${error && digits.length === 0 ? " error" : ""}`} />
@@ -696,13 +655,8 @@ function PinScreen({ role, onSuccess, onBack }) {
         <div className="pin-grid">
           {keys.map((k, i) => {
             if (k === "")  return <div key={i} className="pin-key empty" />;
-            if (k === "del") return (
-              <button key={i} className="pin-key del" onClick={del} disabled={isLocked || checking}>⌫</button>
-            );
-            return (
-              <button key={i} className="pin-key" onClick={() => press(k)}
-                disabled={isLocked || checking || digits.length >= 4}>{k}</button>
-            );
+            if (k === "del") return <button key={i} className="pin-key del" onClick={del} disabled={isLocked || checking}>⌫</button>;
+            return <button key={i} className="pin-key" onClick={() => press(k)} disabled={isLocked || checking || digits.length >= 4}>{k}</button>;
           })}
         </div>
         {error && <div className="pin-error">{error}</div>}
@@ -712,28 +666,15 @@ function PinScreen({ role, onSuccess, onBack }) {
   );
 }
 
-// ── APP ROOT ──────────────────────────────────────────────────────────────────
 export default function App(){
-  const [screen, setScreen]     = useState("roles");   // "roles" | "pin" | "app"
-  const [role, setRole]         = useState(null);
-  const isDemo = APPS_SCRIPT_URL === "YOUR_APPS_SCRIPT_URL_HERE";
+  const [screen, setScreen] = useState("roles");
+  const [role, setRole]     = useState(null);
   const roleLabel = ROLES.find(r => r.id === role)?.name;
 
-  function selectRole(id) {
-    setRole(id);
-    setScreen("pin");
-  }
+  function selectRole(id) { setRole(id); setScreen("pin"); }
+  function onPinSuccess()  { setScreen("app"); }
+  function switchRole()    { setRole(null); setScreen("roles"); }
 
-  function onPinSuccess() {
-    setScreen("app");
-  }
-
-  function switchRole() {
-    setRole(null);
-    setScreen("roles");
-  }
-
-  // ── ROLE SELECTOR
   if (screen === "roles") return (
     <>
       <style>{CSS}</style>
@@ -752,24 +693,16 @@ export default function App(){
     </>
   );
 
-  // ── PIN ENTRY
   if (screen === "pin") return (
     <>
       <style>{CSS}</style>
-      {isDemo && <div className="demo-banner">Demo mode — any 4-digit PIN works</div>}
-      <PinScreen
-        role={role}
-        onSuccess={onPinSuccess}
-        onBack={() => { setRole(null); setScreen("roles"); }}
-      />
+      <PinScreen role={role} onSuccess={onPinSuccess} onBack={() => { setRole(null); setScreen("roles"); }} />
     </>
   );
 
-  // ── MAIN APP
   return (
     <>
       <style>{CSS}</style>
-      {isDemo && <div className="demo-banner">Demo mode — connect Apps Script to go live</div>}
       <div className="shell">
         <div className="topbar">
           <div className="topbar-inner">
