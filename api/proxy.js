@@ -1,4 +1,4 @@
-export const config = { api: { bodyParser: true } };
+export const config = { api: { bodyParser: false } };
 
 export default async function handler(req, res) {
   const GAS_URL = "https://script.google.com/macros/s/AKfycbxp0OOtSZKJ_bW8kSoU7Bc7PKYNEGy9bScswDWTjN8CbxaDg9Wwp5tymCDc_6tMdq_g/exec";
@@ -10,22 +10,30 @@ export default async function handler(req, res) {
   if (req.method === "OPTIONS") { res.status(200).end(); return; }
 
   try {
-    let gasRes;
-    if (req.method === "POST") {
-      // req.body is already parsed by Vercel — stringify it back for Apps Script
-      const body = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
-      gasRes = await fetch(GAS_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-      });
-    } else {
+    if (req.method === "GET") {
       const params = new URLSearchParams(req.query);
-      gasRes = await fetch(`${GAS_URL}?${params}`);
+      const gasRes = await fetch(`${GAS_URL}?${params}`);
+      const data = await gasRes.json();
+      return res.status(200).json(data);
     }
+
+    // For POST — read raw body so nothing gets lost
+    const rawBody = await new Promise((resolve, reject) => {
+      let body = "";
+      req.on("data", chunk => { body += chunk.toString(); });
+      req.on("end", () => resolve(body));
+      req.on("error", reject);
+    });
+
+    const gasRes = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: rawBody,
+    });
     const data = await gasRes.json();
-    res.status(200).json(data);
+    return res.status(200).json(data);
+
   } catch (e) {
-    res.status(500).json({ success: false, error: e.message });
+    return res.status(500).json({ success: false, error: e.message });
   }
 }
