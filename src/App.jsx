@@ -453,6 +453,75 @@ function BaggerForm(){
   );
 }
 
+function ProductCheck(){
+  const [counts,setCounts]=useState(()=>Object.fromEntries(FLAVORS.map(f=>[f,{cases:0,bags:0}])));
+  const [view,setView]=useState("count");
+  const bagsFor=f=>counts[f].cases*6+counts[f].bags;
+  const total=FLAVORS.reduce((s,f)=>s+bagsFor(f),0);
+  function step(f,type,dir){setCounts(c=>({...c,[f]:{...c[f],[type]:Math.max(0,c[f][type]+dir)}}));}
+  function manual(f,type,val){setCounts(c=>({...c,[f]:{...c[f],[type]:Math.max(0,parseInt(val)||0)}}));}
+  function reset(){if(!confirm("Reset all counts to zero?"))return;setCounts(Object.fromEntries(FLAVORS.map(f=>[f,{cases:0,bags:0}])));}
+  const sorted=[...FLAVORS].sort((a,b)=>bagsFor(b)-bagsFor(a));
+  return(
+    <div className="content" style={{paddingTop:14}}>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+        <div style={{display:"flex",gap:6}}>
+          {["count","summary"].map(v=>(
+            <button key={v} onClick={()=>setView(v)} style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"0.5px solid var(--bdr2)",background:view===v?"var(--tx)":"transparent",color:view===v?"var(--bg)":"var(--mu)",cursor:"pointer",fontFamily:"var(--mono)",WebkitTapHighlightColor:"transparent",textTransform:"uppercase",letterSpacing:"0.8px"}}>{v}</button>
+          ))}
+        </div>
+        <span style={{fontSize:12,background:"var(--am-bg)",color:"var(--am)",padding:"3px 10px",borderRadius:20,fontWeight:500}}>{total} bags</span>
+      </div>
+      {view==="count"&&(
+        <>
+          {FLAVORS.map(f=>{
+            const b=bagsFor(f),c=Math.floor(b/6),r=b%6;
+            let foot=b+" bag"+(b===1?"":"s");
+            if(c>0)foot+=" ("+c+"c"+(r>0?" + "+r+"b":"")+")";
+            return(
+              <div key={f} className="panel" style={{marginBottom:10,padding:"12px 14px"}}>
+                <div style={{fontSize:13,fontWeight:500,marginBottom:10}}>{f}</div>
+                {[["cases","Cases (×6)"],["bags","Loose bags"]].map(([type,label])=>(
+                  <div key={type} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
+                    <span style={{fontSize:11,color:"var(--mu)",width:82,flexShrink:0}}>{label}</span>
+                    <div style={{display:"flex",alignItems:"center",flex:1,border:"0.5px solid var(--bdr2)",borderRadius:"var(--r)",overflow:"hidden",height:40}}>
+                      <button onTouchStart={e=>{e.preventDefault();step(f,type,-1);}} onClick={e=>{e.preventDefault();step(f,type,-1);}} style={{width:44,height:40,background:"var(--surf2)",border:"none",fontSize:22,fontWeight:300,color:"var(--tx)",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>−</button>
+                      <input type="number" inputMode="numeric" pattern="[0-9]*" min="0" value={counts[f][type]} onChange={e=>manual(f,type,e.target.value)} style={{flex:1,textAlign:"center",fontSize:17,fontWeight:600,color:"var(--tx)",background:"var(--surf)",border:"none",outline:"none",height:40,padding:0,fontFamily:"var(--mono)"}}/>
+                      <button onTouchStart={e=>{e.preventDefault();step(f,type,1);}} onClick={e=>{e.preventDefault();step(f,type,1);}} style={{width:44,height:40,background:"var(--surf2)",border:"none",fontSize:22,fontWeight:300,color:"var(--tx)",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>+</button>
+                    </div>
+                  </div>
+                ))}
+                <div style={{display:"flex",justifyContent:"flex-end",marginTop:8,paddingTop:8,borderTop:"0.5px solid var(--bdr)"}}>
+                  <span style={{fontSize:11,fontWeight:600,background:"var(--gn-bg)",color:"var(--gn)",padding:"3px 10px",borderRadius:10}}>{foot}</span>
+                </div>
+              </div>
+            );
+          })}
+          <button onClick={reset} style={{width:"100%",padding:11,background:"none",border:"0.5px solid var(--bdr2)",borderRadius:"var(--r)",fontSize:13,color:"var(--mu)",cursor:"pointer",fontFamily:"var(--mono)",marginTop:4}}>Reset all to zero</button>
+        </>
+      )}
+      {view==="summary"&&(
+        <div className="panel">
+          {sorted.map(f=>{
+            const b=bagsFor(f),c=Math.floor(b/6),r=b%6;
+            const sub=b>0?(c>0?c+"c":"")+((c>0&&r>0)?" + ":"")+(r>0?r+"b":""):"";
+            return(
+              <div key={f} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:"0.5px solid var(--bdr)"}}>
+                <span style={{fontSize:13,color:b===0?"var(--hi)":"var(--tx)"}}>{f}</span>
+                <span style={{display:"flex",alignItems:"baseline",gap:5}}>
+                  <span style={{fontSize:14,fontWeight:600,color:b===0?"var(--hi)":"var(--tx)"}}>{b}</span>
+                  {sub&&<span style={{fontSize:11,color:"var(--mu)"}}>{sub}</span>}
+                </span>
+              </div>
+            );
+          })}
+          <div style={{fontSize:11,color:"var(--hi)",marginTop:10}}>1 case = 6 bags · c = cases, b = loose bags</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AdminDashboard(){
   const [tab,setTab]=useState("today");
   const [inv,setInv]=useState(MOCK_INV);
@@ -493,7 +562,7 @@ function AdminDashboard(){
   return(
     <>
       <div className="nav">
-        {["today","orders","inventory"].map(t=>(
+        {["today","orders","inventory","product check"].map(t=>(
           <button key={t} className={`nav-btn${tab===t?" active":""}`} onClick={()=>setTab(t)}>
             {t}
             {t==="today"&&unread>0&&(
@@ -587,6 +656,7 @@ function AdminDashboard(){
             ))}
           </Panel>
         )}
+        {tab==="product check"&&<ProductCheck/>}
       </div>
     </>
   );
@@ -719,3 +789,4 @@ export default function App(){
     </>
   );
 }
+
