@@ -5,9 +5,9 @@ const APPS_SCRIPT_URL = "/api/proxy";
 const FLAVORS = ["Red Wine","White Wine","Tomato Basil","Garlic Herb","Buttermilk Bacon","Lavender Rosemary","Cracked Pepper & Sage","Spicy Chocolate Mint","Chocolate Graham","Graham Crackers"];
 const SIZES = [{key:"s45",label:"4.5oz",oz:4.5,mult:1},{key:"s15",label:"15oz",oz:15,mult:4},{key:"s450",label:"45oz",oz:45,mult:10}];
 const ROLES = [{id:"admin",icon:"🧑‍💼",name:"Kevin",desc:"Full dashboard"},{id:"baker",icon:"🥐",name:"Kitchen",desc:"Log completed bakes"},{id:"bagger",icon:"📦",name:"Bag Construction",desc:"Log bags made"}];
-
 const floorBags=(oz,sizeOz)=>oz<=0?0:Math.floor(oz/sizeOz);
 const remOz=(oz,sizeOz)=>oz<=0?0:parseFloat((oz-floorBags(oz,sizeOz)*sizeOz).toFixed(2));
+
 function computeFlavor(fd){
   const bags={},rems={};let totalBags=0,totalRetail=0;
   SIZES.forEach(sz=>{bags[sz.key]=floorBags(fd.split[sz.key],sz.oz);rems[sz.key]=remOz(fd.split[sz.key],sz.oz);totalBags+=bags[sz.key];totalRetail+=bags[sz.key]*sz.mult;});
@@ -15,6 +15,7 @@ function computeFlavor(fd){
   const unalloc=parseFloat((fd.totalOz-allocOz).toFixed(2));
   return{bags,rems,totalBags,totalRetail,allocOz,unalloc};
 }
+
 const emptyFD=()=>({totalOz:0,split:{s45:0,s15:0,s450:0}});
 const emptyQtys=()=>Object.fromEntries(FLAVORS.map(f=>[f,0]));
 const barColor=(b,m)=>{const p=b/m;return p>0.4?"var(--gn-m)":p>0.2?"var(--am-m)":"var(--co-m)";};
@@ -84,7 +85,6 @@ html,body{height:100%;background:var(--bg);font-family:var(--mono);color:var(--t
 .a-row:last-child{border-bottom:none}
 .a-icon{width:20px;height:20px;border-radius:5px;display:flex;align-items:center;justify-content:center;font-size:10px;flex-shrink:0;margin-top:1px}
 .a-warn{background:var(--am-bg);color:var(--am)}.a-err{background:var(--co-bg);color:var(--co)}.a-info{background:var(--bl-bg);color:var(--bl)}
-.a-sub{color:var(--mu);font-size:11px;display:block;margin-top:2px}
 .int-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}
 .int-card{background:var(--surf2);border-radius:8px;padding:10px 12px}
 .int-name{font-size:11px;font-weight:500;margin-bottom:3px}
@@ -138,6 +138,28 @@ html,body{height:100%;background:var(--bg);font-family:var(--mono);color:var(--t
 .suc-box{background:var(--gn-bg);color:var(--gn);border-radius:var(--r);padding:14px 16px;font-size:13px;text-align:center;margin-top:14px}
 .err-box{background:var(--co-bg);color:var(--co);border-radius:var(--r);padding:14px 16px;font-size:13px;text-align:center;margin-top:14px}
 .demo-banner{background:var(--am-bg);color:var(--am);font-size:11px;text-align:center;padding:8px 16px}
+
+/* Product Check styles */
+.pc-toggle{display:flex;gap:6px;margin-bottom:16px}
+.pc-toggle-btn{flex:1;padding:8px;border-radius:var(--r);border:0.5px solid var(--bdr2);background:transparent;font-family:var(--mono);font-size:12px;color:var(--mu);cursor:pointer;-webkit-tap-highlight-color:transparent;transition:all 0.1s}
+.pc-toggle-btn.active{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+.pc-total-badge{margin-left:auto;background:var(--am-m);color:#fff;font-size:12px;font-weight:500;padding:5px 12px;border-radius:20px;font-family:var(--mono)}
+.pc-total-badge.has-count{background:var(--gn-m)}
+.pc-flavor-block{background:var(--surf);border:0.5px solid var(--bdr);border-radius:var(--rl);padding:14px;margin-bottom:10px}
+.pc-flavor-name{font-size:13px;font-weight:500;margin-bottom:12px;color:var(--tx)}
+.pc-input-row{display:flex;align-items:center;gap:10px;margin-bottom:8px}
+.pc-input-row:last-of-type{margin-bottom:0}
+.pc-input-lbl{font-size:11px;color:var(--mu);flex:1}
+.pc-counter{display:flex;align-items:center;gap:8px}
+.pc-bag-total{font-size:11px;color:var(--gn-m);font-weight:500;text-align:right;margin-top:8px;padding-top:8px;border-top:0.5px solid var(--bdr)}
+.pc-bag-total.zero{color:var(--hi)}
+.pc-summary-row{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:0.5px solid var(--bdr);font-size:12px}
+.pc-summary-row:last-child{border-bottom:none}
+.pc-summary-flavor{color:var(--tx)}
+.pc-summary-bags{font-weight:500;color:var(--gn-m)}
+.pc-summary-bags.zero{color:var(--hi);font-weight:400}
+.pc-warn-box{background:var(--am-bg);color:var(--am);border-radius:var(--r);padding:12px 14px;font-size:12px;margin-bottom:14px;line-height:1.5}
+
 @media(min-width:540px){.metrics{grid-template-columns:repeat(4,1fr)}.flavor-grid{grid-template-columns:repeat(3,1fr)}}
 .pin-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100svh;padding:32px 20px;gap:0}
 .pin-card{background:var(--surf);border:0.5px solid var(--bdr2);border-radius:var(--rl);padding:28px 24px;width:100%;max-width:300px;text-align:center}
@@ -156,7 +178,6 @@ html,body{height:100%;background:var(--bg);font-family:var(--mono);color:var(--t
 .pin-error{font-size:11px;color:var(--co-m);margin-top:12px;min-height:16px;text-align:center}
 .pin-back{font-family:var(--mono);font-size:11px;color:var(--hi);background:none;border:none;cursor:pointer;padding:16px 0 0;display:block;margin:0 auto}
 `;
-
 
 function Panel({title,dot,children}){
   return <div className="panel"><div className="panel-title"><span className="pdot" style={{background:dot}}/>{title}</div>{children}</div>;
@@ -178,13 +199,209 @@ function StepBar({steps,current}){
   );
 }
 
+// ── PRODUCT CHECK ─────────────────────────────────────────────
+function ProductCheck(){
+  const emptyCounts = () => Object.fromEntries(FLAVORS.map(f => [f, { cases: 0, loose: 0 }]));
+  const [mode, setMode] = useState("count"); // "count" | "summary" | "success"
+  const [counts, setCounts] = useState(emptyCounts());
+  const [status, setStatus] = useState(null); // null | "loading" | "error"
+  const [confirmed, setConfirmed] = useState(false);
+  const lastTap = React.useRef({});
+
+  const getBags = (f) => (counts[f].cases * 6) + counts[f].loose;
+  const totalBags = FLAVORS.reduce((sum, f) => sum + getBags(f), 0);
+
+  // Debounced increment/decrement — prevents double-fire on mobile
+  function debouncedChange(flavor, field, delta) {
+    const key = flavor + field;
+    const now = Date.now();
+    if (lastTap.current[key] && now - lastTap.current[key] < 120) return;
+    lastTap.current[key] = now;
+    setCounts(c => ({
+      ...c,
+      [flavor]: { ...c[flavor], [field]: Math.max(0, c[flavor][field] + delta) }
+    }));
+  }
+
+  async function submit() {
+    if (status === "loading") return;
+    setStatus("loading");
+    const inventory = Object.fromEntries(FLAVORS.map(f => [f, getBags(f)]));
+    const res = await apiCall("updateOnHand", {
+      inventory,
+      timestamp: new Date().toISOString(),
+    });
+    if (res.success) {
+      setMode("success");
+      setStatus(null);
+    } else {
+      setStatus("error");
+    }
+  }
+
+  // Success screen
+  if (mode === "success") {
+    return (
+      <div className="content" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", textAlign: "center", gap: 20 }}>
+        <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--gn-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>✓</div>
+        <div>
+          <div style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 500, marginBottom: 8 }}>Count submitted</div>
+          <div style={{ fontSize: 12, color: "var(--mu)", lineHeight: 1.6 }}>Bake Planner On Hand has been updated.<br />Total: {totalBags} bags across {FLAVORS.length} flavors.</div>
+        </div>
+        <div style={{ background: "var(--surf2)", borderRadius: "var(--r)", padding: "14px 18px", width: "100%", maxWidth: 320 }}>
+          {FLAVORS.map(f => {
+            const bags = getBags(f);
+            return (
+              <div key={f} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 12, borderBottom: "0.5px solid var(--bdr)" }}>
+                <span style={{ color: "var(--mu)" }}>{f}</span>
+                <span style={{ fontWeight: 500, color: bags > 0 ? "var(--gn-m)" : "var(--hi)" }}>{bags} bags</span>
+              </div>
+            );
+          })}
+        </div>
+        <button className="sub-btn full" onClick={() => { setCounts(emptyCounts()); setConfirmed(false); setMode("count"); }} style={{ maxWidth: 320 }}>
+          New count
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="content">
+      <div className="form-hdr">
+        <h2>Product Check</h2>
+        <p>Physical inventory count. Updates On Hand in the Bake Planner for all flavors.</p>
+      </div>
+
+      <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
+        <div className="pc-toggle" style={{ flex: 1, marginBottom: 0 }}>
+          <button className={`pc-toggle-btn${mode === "count" ? " active" : ""}`} onClick={() => setMode("count")}>COUNT</button>
+          <button className={`pc-toggle-btn${mode === "summary" ? " active" : ""}`} onClick={() => setMode("summary")}>SUMMARY</button>
+        </div>
+        <span className={`pc-total-badge${totalBags > 0 ? " has-count" : ""}`} style={{ marginLeft: 10 }}>
+          {totalBags} bag{totalBags !== 1 ? "s" : ""}
+        </span>
+      </div>
+
+      {mode === "count" && (
+        <>
+          {FLAVORS.map(f => {
+            const bags = getBags(f);
+            return (
+              <div key={f} className="pc-flavor-block">
+                <div className="pc-flavor-name">{f}</div>
+                <div className="pc-input-row">
+                  <span className="pc-input-lbl">Cases (×6)</span>
+                  <div className="pc-counter">
+                    <button
+                      className="q-btn"
+                      style={{ width: 44, height: 44 }}
+                      onPointerDown={e => { e.preventDefault(); debouncedChange(f, "cases", -1); }}
+                    >−</button>
+                    <span className={`q-val${counts[f].cases > 0 ? " nz" : ""}`} style={{ minWidth: 44, fontSize: 18 }}>{counts[f].cases}</span>
+                    <button
+                      className="q-btn"
+                      style={{ width: 44, height: 44 }}
+                      onPointerDown={e => { e.preventDefault(); debouncedChange(f, "cases", 1); }}
+                    >+</button>
+                  </div>
+                </div>
+                <div className="pc-input-row">
+                  <span className="pc-input-lbl">Loose bags</span>
+                  <div className="pc-counter">
+                    <button
+                      className="q-btn"
+                      style={{ width: 44, height: 44 }}
+                      onPointerDown={e => { e.preventDefault(); debouncedChange(f, "loose", -1); }}
+                    >−</button>
+                    <span className={`q-val${counts[f].loose > 0 ? " nz" : ""}`} style={{ minWidth: 44, fontSize: 18 }}>{counts[f].loose}</span>
+                    <button
+                      className="q-btn"
+                      style={{ width: 44, height: 44 }}
+                      onPointerDown={e => { e.preventDefault(); debouncedChange(f, "loose", 1); }}
+                    >+</button>
+                  </div>
+                </div>
+                <div className={`pc-bag-total${bags === 0 ? " zero" : ""}`}>
+                  {bags === 0 ? "0 bags" : `${bags} bag${bags !== 1 ? "s" : ""} total`}
+                </div>
+              </div>
+            );
+          })}
+
+          <button
+            className="sub-btn full"
+            style={{ marginBottom: 12 }}
+            disabled={totalBags === 0}
+            onClick={() => { setConfirmed(false); setMode("summary"); }}
+          >
+            Review & submit count →
+          </button>
+        </>
+      )}
+
+      {mode === "summary" && (
+        <>
+          <div className="pc-warn-box">
+            This will overwrite On Hand in the Bake Planner for all 10 flavors. Zeros will be written as zeros. Make sure your count is complete before submitting.
+          </div>
+
+          <Panel title="Count summary" dot="var(--gn-m)">
+            {FLAVORS.map(f => {
+              const bags = getBags(f);
+              return (
+                <div key={f} className="pc-summary-row">
+                  <span className="pc-summary-flavor">{f}</span>
+                  <span className={`pc-summary-bags${bags === 0 ? " zero" : ""}`}>
+                    {bags} bag{bags !== 1 ? "s" : ""}
+                    {counts[f].cases > 0 && (
+                      <span style={{ fontSize: 10, color: "var(--hi)", marginLeft: 6 }}>
+                        ({counts[f].cases} cases + {counts[f].loose} loose)
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+          </Panel>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, padding: "10px 14px", background: "var(--surf2)", borderRadius: "var(--r)" }}>
+            <input
+              type="checkbox"
+              id="pc-confirm"
+              checked={confirmed}
+              onChange={e => setConfirmed(e.target.checked)}
+              style={{ width: 18, height: 18, cursor: "pointer", accentColor: "var(--gn-m)", flexShrink: 0 }}
+            />
+            <label htmlFor="pc-confirm" style={{ fontSize: 12, color: "var(--mu)", cursor: "pointer", lineHeight: 1.4 }}>
+              I have counted all flavors and this count is accurate
+            </label>
+          </div>
+
+          <div className="action-row">
+            <button className="sec-btn" onClick={() => setMode("count")}>← Edit</button>
+            <button
+              className="sub-btn"
+              disabled={!confirmed || status === "loading"}
+              onClick={submit}
+            >
+              {status === "loading" ? "Updating…" : "Submit count"}
+            </button>
+          </div>
+
+          {status === "error" && <div className="err-box">Something went wrong — try again or update the sheet directly.</div>}
+        </>
+      )}
+    </div>
+  );
+}
+
 function BakerForm(){
   const [step,setStep]=useState(0);
   const [selected,setSelected]=useState(new Set());
   const [fd,setFd]=useState({});
   const [active,setActive]=useState(null);
   const [status,setStatus]=useState(null);
-
   const selFlavors=FLAVORS.filter(f=>selected.has(f));
 
   function toggleFlavor(f){
@@ -260,7 +477,6 @@ function BakerForm(){
         <p>Record ounces produced per flavor — bags calculated automatically.</p>
       </div>
       <StepBar steps={["Flavors","Ounces","Review"]} current={step}/>
-
       {step===0&&(
         <>
           <p style={{fontSize:12,color:"var(--mu)",marginBottom:12}}>Which flavors were baked this session?</p>
@@ -277,7 +493,6 @@ function BakerForm(){
           </button>
         </>
       )}
-
       {step===1&&active&&(()=>{
         const data=fd[active]||emptyFD();
         const alloc=getAlloc(active);
@@ -293,7 +508,6 @@ function BakerForm(){
                 );
               })}
             </div>
-
             <div className="f-block">
               <div className="fb-hdr">
                 <span className="fb-name">{active}</span>
@@ -301,7 +515,6 @@ function BakerForm(){
                   {data.totalOz>0?`${data.totalOz} oz total`:"enter total oz"}
                 </span>
               </div>
-
               <div className="oz-row" style={{marginBottom:14,paddingBottom:12,borderBottom:"0.5px solid var(--bdr)"}}>
                 <span style={{fontSize:12,color:"var(--tx)",fontWeight:500,marginRight:8,flexShrink:0}}>Total oz</span>
                 <input
@@ -314,7 +527,6 @@ function BakerForm(){
                     fontWeight:500,textAlign:"right"}}
                 />
               </div>
-
               {data.totalOz>0&&(
                 <>
                   <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>Enter 15oz and 45oz quantities — 4.5oz fills automatically:</p>
@@ -326,12 +538,9 @@ function BakerForm(){
                       <div className="oz-row" key={sz.key}>
                         <span className="oz-lbl">{sz.label}{isAuto&&<span style={{fontSize:9,color:"var(--hi)",marginLeft:4}}>auto</span>}</span>
                         {isAuto?(
-                          <input
-                            type="number" readOnly value={soz||""}
-                            style={{width:80,padding:"6px 10px",
-                              border:"0.5px solid var(--bdr)",borderRadius:"var(--r)",
-                              background:"var(--surf)",color:"var(--mu)",
-                              fontFamily:"var(--mono)",fontSize:14,fontWeight:500,
+                          <input type="number" readOnly value={soz||""}
+                            style={{width:80,padding:"6px 10px",border:"0.5px solid var(--bdr)",borderRadius:"var(--r)",
+                              background:"var(--surf)",color:"var(--mu)",fontFamily:"var(--mono)",fontSize:14,fontWeight:500,
                               textAlign:"right",cursor:"default"}}
                           />
                         ):(
@@ -356,7 +565,6 @@ function BakerForm(){
                 </>
               )}
             </div>
-
             <div className="action-row">
               <button className="sec-btn" onClick={prevFlavor}>{fi===0?"← Flavors":"← Prev"}</button>
               <button className="sub-btn" disabled={data.totalOz===0} onClick={nextFlavor}>
@@ -366,7 +574,6 @@ function BakerForm(){
           </>
         );
       })()}
-
       {step===2&&summary&&(
         <>
           <div className="sum-panel">
@@ -383,7 +590,6 @@ function BakerForm(){
             <div className="sum-row"><span className="lbl">Retail bag equivalents</span><span className="val" style={{color:"var(--bl-m)"}}>{summary.totRetail}</span></div>
             {summary.rems.length>0&&<div className="sum-warn">Leftover oz (not counted): {summary.rems.join(", ")}</div>}
           </div>
-
           {selFlavors.map(f=>{
             const data=fd[f]||emptyFD();const comp=computeFlavor(data);
             return(
@@ -403,7 +609,6 @@ function BakerForm(){
               </div>
             );
           })}
-
           <div className="action-row">
             <button className="sec-btn" onClick={()=>setStep(1)}>← Edit</button>
             <button className="sub-btn" disabled={status==="loading"} onClick={submit}>
@@ -423,6 +628,7 @@ function BaggerForm(){
   const [status,setStatus]=useState(null);
   const total=Object.values(qtys).reduce((a,b)=>a+b,0);
   const set=(f,v)=>setQtys(q=>({...q,[f]:Math.max(0,v)}));
+
   async function submit(){
     if(total===0||status==="loading")return;
     setStatus("loading");
@@ -430,6 +636,7 @@ function BaggerForm(){
     setStatus(res.success?"success":"error");
     if(res.success)setQtys(emptyQtys());
   }
+
   return(
     <div className="content">
       <div className="form-hdr"><h2>Log bags made</h2><p>Enter the number of bags made per flavor for this session.</p></div>
@@ -453,75 +660,6 @@ function BaggerForm(){
   );
 }
 
-function ProductCheck(){
-  const [counts,setCounts]=useState(()=>Object.fromEntries(FLAVORS.map(f=>[f,{cases:0,bags:0}])));
-  const [view,setView]=useState("count");
-  const bagsFor=f=>counts[f].cases*6+counts[f].bags;
-  const total=FLAVORS.reduce((s,f)=>s+bagsFor(f),0);
-  function step(f,type,dir){setCounts(c=>({...c,[f]:{...c[f],[type]:Math.max(0,c[f][type]+dir)}}));}
-  function manual(f,type,val){setCounts(c=>({...c,[f]:{...c[f],[type]:Math.max(0,parseInt(val)||0)}}));}
-  function reset(){if(!confirm("Reset all counts to zero?"))return;setCounts(Object.fromEntries(FLAVORS.map(f=>[f,{cases:0,bags:0}])));}
-  const sorted=[...FLAVORS].sort((a,b)=>bagsFor(b)-bagsFor(a));
-  return(
-    <div className="content" style={{paddingTop:14}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
-        <div style={{display:"flex",gap:6}}>
-          {["count","summary"].map(v=>(
-            <button key={v} onClick={()=>setView(v)} style={{fontSize:11,padding:"5px 12px",borderRadius:6,border:"0.5px solid var(--bdr2)",background:view===v?"var(--tx)":"transparent",color:view===v?"var(--bg)":"var(--mu)",cursor:"pointer",fontFamily:"var(--mono)",WebkitTapHighlightColor:"transparent",textTransform:"uppercase",letterSpacing:"0.8px"}}>{v}</button>
-          ))}
-        </div>
-        <span style={{fontSize:12,background:"var(--am-bg)",color:"var(--am)",padding:"3px 10px",borderRadius:20,fontWeight:500}}>{total} bags</span>
-      </div>
-      {view==="count"&&(
-        <>
-          {FLAVORS.map(f=>{
-            const b=bagsFor(f),c=Math.floor(b/6),r=b%6;
-            let foot=b+" bag"+(b===1?"":"s");
-            if(c>0)foot+=" ("+c+"c"+(r>0?" + "+r+"b":"")+")";
-            return(
-              <div key={f} className="panel" style={{marginBottom:10,padding:"12px 14px"}}>
-                <div style={{fontSize:13,fontWeight:500,marginBottom:10}}>{f}</div>
-                {[["cases","Cases (×6)"],["bags","Loose bags"]].map(([type,label])=>(
-                  <div key={type} style={{display:"flex",alignItems:"center",gap:8,marginBottom:7}}>
-                    <span style={{fontSize:11,color:"var(--mu)",width:82,flexShrink:0}}>{label}</span>
-                    <div style={{display:"flex",alignItems:"center",flex:1,border:"0.5px solid var(--bdr2)",borderRadius:"var(--r)",overflow:"hidden",height:40}}>
-                      <button onTouchStart={e=>{e.preventDefault();step(f,type,-1);}} onClick={e=>{e.preventDefault();step(f,type,-1);}} style={{width:44,height:40,background:"var(--surf2)",border:"none",fontSize:22,fontWeight:300,color:"var(--tx)",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>−</button>
-                      <input type="number" inputMode="numeric" pattern="[0-9]*" min="0" value={counts[f][type]} onChange={e=>manual(f,type,e.target.value)} style={{flex:1,textAlign:"center",fontSize:17,fontWeight:600,color:"var(--tx)",background:"var(--surf)",border:"none",outline:"none",height:40,padding:0,fontFamily:"var(--mono)"}}/>
-                      <button onTouchStart={e=>{e.preventDefault();step(f,type,1);}} onClick={e=>{e.preventDefault();step(f,type,1);}} style={{width:44,height:40,background:"var(--surf2)",border:"none",fontSize:22,fontWeight:300,color:"var(--tx)",cursor:"pointer",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",WebkitTapHighlightColor:"transparent",touchAction:"manipulation"}}>+</button>
-                    </div>
-                  </div>
-                ))}
-                <div style={{display:"flex",justifyContent:"flex-end",marginTop:8,paddingTop:8,borderTop:"0.5px solid var(--bdr)"}}>
-                  <span style={{fontSize:11,fontWeight:600,background:"var(--gn-bg)",color:"var(--gn)",padding:"3px 10px",borderRadius:10}}>{foot}</span>
-                </div>
-              </div>
-            );
-          })}
-          <button onClick={reset} style={{width:"100%",padding:11,background:"none",border:"0.5px solid var(--bdr2)",borderRadius:"var(--r)",fontSize:13,color:"var(--mu)",cursor:"pointer",fontFamily:"var(--mono)",marginTop:4}}>Reset all to zero</button>
-        </>
-      )}
-      {view==="summary"&&(
-        <div className="panel">
-          {sorted.map(f=>{
-            const b=bagsFor(f),c=Math.floor(b/6),r=b%6;
-            const sub=b>0?(c>0?c+"c":"")+((c>0&&r>0)?" + ":"")+(r>0?r+"b":""):"";
-            return(
-              <div key={f} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderBottom:"0.5px solid var(--bdr)"}}>
-                <span style={{fontSize:13,color:b===0?"var(--hi)":"var(--tx)"}}>{f}</span>
-                <span style={{display:"flex",alignItems:"baseline",gap:5}}>
-                  <span style={{fontSize:14,fontWeight:600,color:b===0?"var(--hi)":"var(--tx)"}}>{b}</span>
-                  {sub&&<span style={{fontSize:11,color:"var(--mu)"}}>{sub}</span>}
-                </span>
-              </div>
-            );
-          })}
-          <div style={{fontSize:11,color:"var(--hi)",marginTop:10}}>1 case = 6 bags · c = cases, b = loose bags</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function AdminDashboard(){
   const [tab,setTab]=useState("today");
   const [inv,setInv]=useState(MOCK_INV);
@@ -535,8 +673,8 @@ function AdminDashboard(){
       apiCall("getAlerts"),
     ]).then(([i,o,a])=>{
       if(i.success&&i.inventory) setInv(i.inventory);
-      if(o.success&&o.orders)    setOrders(o.orders);
-      if(a.success&&a.alerts)    setAlerts(a.alerts);
+      if(o.success&&o.orders) setOrders(o.orders);
+      if(a.success&&a.alerts) setAlerts(a.alerts);
     });
   },[]);
 
@@ -551,7 +689,7 @@ function AdminDashboard(){
     try{
       const diff=Date.now()-new Date(ts).getTime();
       const m=Math.floor(diff/60000);
-      if(m<1)  return "just now";
+      if(m<1) return "just now";
       if(m<60) return m+"m ago";
       const h=Math.floor(m/60);
       if(h<24) return h+"h ago";
@@ -571,107 +709,110 @@ function AdminDashboard(){
           </button>
         ))}
       </div>
-      <div className="content">
-        {tab==="today"&&(
-          <>
-            <div className="metrics" style={{marginTop:14}}>
-              <div className="metric m-green"><div className="m-label">Orders today</div><div className="m-val">7</div><div className="m-delta">+3 vs yesterday</div></div>
-              <div className="metric m-amber"><div className="m-label">Pending ship</div><div className="m-val">4</div><div className="m-delta">2 due today</div></div>
-              <div className="metric m-blue"><div className="m-label">Revenue 7d</div><div className="m-val">$1,240</div><div className="m-delta">all channels</div></div>
-              <div className="metric m-coral"><div className="m-label">Low stock</div><div className="m-val">2</div><div className="m-delta">below 20 bags</div></div>
-            </div>
-            {unread>0&&(
-              <div className="panel" style={{marginBottom:12}}>
-                <div className="panel-title">
-                  <span className="pdot" style={{background:"var(--co-m)"}}/>
-                  production updates
-                  <span style={{marginLeft:"auto",fontSize:10,background:"var(--co-bg)",color:"var(--co)",padding:"2px 8px",borderRadius:10,fontWeight:500}}>{unread} new</span>
-                </div>
-                {alerts.map(a=>(
-                  <div key={a.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0",borderBottom:"0.5px solid var(--bdr)"}}>
-                    <div style={{width:22,height:22,borderRadius:6,flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,background:a.type==="bake"?"var(--am-bg)":"var(--tl-bg)",color:a.type==="bake"?"var(--am)":"var(--tl)"}}>
-                      {a.type==="bake"?"B":"P"}
-                    </div>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,fontWeight:500}}>{a.title}</div>
-                      <div style={{fontSize:11,color:"var(--mu)",marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.summary}</div>
-                      <div style={{fontSize:10,color:"var(--hi)",marginTop:2}}>{relTime(a.timestamp)}</div>
-                    </div>
-                    <button onClick={()=>dismiss(a.id)} style={{fontSize:14,color:"var(--hi)",background:"none",border:"none",cursor:"pointer",padding:"0 4px",lineHeight:1,flexShrink:0,fontFamily:"var(--mono)",marginTop:2}}>×</button>
-                  </div>
-                ))}
+
+      {tab==="product check" && <ProductCheck />}
+
+      {tab !== "product check" && (
+        <div className="content">
+          {tab==="today"&&(
+            <>
+              <div className="metrics" style={{marginTop:14}}>
+                <div className="metric m-green"><div className="m-label">Orders today</div><div className="m-val">7</div><div className="m-delta">+3 vs yesterday</div></div>
+                <div className="metric m-amber"><div className="m-label">Pending ship</div><div className="m-val">4</div><div className="m-delta">2 due today</div></div>
+                <div className="metric m-blue"><div className="m-label">Revenue 7d</div><div className="m-val">$1,240</div><div className="m-delta">all channels</div></div>
+                <div className="metric m-coral"><div className="m-label">Low stock</div><div className="m-val">2</div><div className="m-delta">below 20 bags</div></div>
               </div>
-            )}
-            <Panel title="Recent orders" dot="var(--bl-m)">
-              {orders.slice(0,5).map(o=>{const cs=chStyle(o.channel);return(
+              {unread>0&&(
+                <div className="panel" style={{marginBottom:12}}>
+                  <div className="panel-title">
+                    <span className="pdot" style={{background:"var(--co-m)"}}/>
+                    production updates
+                    <span style={{marginLeft:"auto",fontSize:10,background:"var(--co-bg)",color:"var(--co)",padding:"2px 8px",borderRadius:10,fontWeight:500}}>{unread} new</span>
+                  </div>
+                  {alerts.map(a=>(
+                    <div key={a.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0",borderBottom:"0.5px solid var(--bdr)"}}>
+                      <div style={{width:22,height:22,borderRadius:6,flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,background:a.type==="bake"?"var(--am-bg)":"var(--tl-bg)",color:a.type==="bake"?"var(--am)":"var(--tl)"}}>
+                        {a.type==="bake"?"B":"P"}
+                      </div>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:500}}>{a.title}</div>
+                        <div style={{fontSize:11,color:"var(--mu)",marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.summary}</div>
+                        <div style={{fontSize:10,color:"var(--hi)",marginTop:2}}>{relTime(a.timestamp)}</div>
+                      </div>
+                      <button onClick={()=>dismiss(a.id)} style={{fontSize:14,color:"var(--hi)",background:"none",border:"none",cursor:"pointer",padding:"0 4px",lineHeight:1,flexShrink:0,fontFamily:"var(--mono)",marginTop:2}}>×</button>
+                    </div>
+                  ))}
+                </div>
+              )}
+              <Panel title="Recent orders" dot="var(--bl-m)">
+                {orders.slice(0,5).map(o=>{const cs=chStyle(o.channel);return(
+                  <div className="order-row" key={o.id}>
+                    <span className="o-id">{o.id}</span><span className="o-name">{o.customer}</span>
+                    <div className="o-right">
+                      <span className="badge" style={{background:cs.bg,color:cs.color}}>{o.channel==="WooCommerce"?"WooComm":o.channel}</span>
+                      <span className="o-amt">${o.amount}</span>
+                    </div>
+                  </div>
+                );})}
+              </Panel>
+              <Panel title="Channels — 7 days" dot="var(--tl-m)">
+                {[{name:"WooCommerce",code:"WC",rev:340},{name:"Faire",code:"FA",rev:620},{name:"Direct",code:"DI",rev:280}].map(c=>{const cs=chStyle(c.name);return(
+                  <div className="ch-row" key={c.name}>
+                    <span className="ch-left"><span className="ch-icon" style={{background:cs.bg,color:cs.color}}>{c.code}</span>{c.name}</span>
+                    <span style={{fontSize:12,color:"var(--mu)"}}>${c.rev}</span>
+                  </div>
+                );})}
+              </Panel>
+              <Panel title="System alerts" dot="var(--am-m)">
+                <div className="a-row"><div className="a-icon a-warn">!</div><div><div>Choc Graham 15oz</div><span className="a-sub">SKU unmapped in SOS</span></div></div>
+                <div className="a-row"><div className="a-icon a-err">!</div><div><div>Spicy Choc Mint 45oz</div><span className="a-sub">column AD pending</span></div></div>
+                <div className="a-row"><div className="a-icon a-info">i</div><div><div>INV-97</div><span className="a-sub">2 days without fulfillment</span></div></div>
+              </Panel>
+              <Panel title="Integrations" dot="var(--hi)">
+                <div className="int-grid">
+                  {[{n:"SOS Inv.",ok:true},{n:"ShipStation",ok:true},{n:"WooComm.",ok:true},{n:"HubSpot",ok:true},{n:"Klaviyo",ok:true},{n:"QuickBooks",ok:true},{n:"Zapier",ok:true},{n:"G Workspace",ok:true},{n:"Faire SKU",ok:false,note:"-R active"}].map(s=>(
+                    <div className="int-card" key={s.n}><div className="int-name">{s.n}</div><div className="int-st"><span className={s.ok?"d-live":"d-warn"}/>{s.note||(s.ok?"live":"warn")}</div></div>
+                  ))}
+                </div>
+              </Panel>
+            </>
+          )}
+          {tab==="orders"&&(
+            <Panel title="All orders" dot="var(--bl-m)">
+              {orders.map(o=>(
                 <div className="order-row" key={o.id}>
                   <span className="o-id">{o.id}</span><span className="o-name">{o.customer}</span>
-                  <div className="o-right">
-                    <span className="badge" style={{background:cs.bg,color:cs.color}}>{o.channel==="WooCommerce"?"WooComm":o.channel}</span>
-                    <span className="o-amt">${o.amount}</span>
-                  </div>
+                  <div className="o-right"><span className={`badge ${o.status==="shipped"?"b-ship":"b-pend"}`}>{o.status}</span><span className="o-amt">${o.amount}</span></div>
                 </div>
-              );})}
+              ))}
             </Panel>
-            <Panel title="Channels — 7 days" dot="var(--tl-m)">
-              {[{name:"WooCommerce",code:"WC",rev:340},{name:"Faire",code:"FA",rev:620},{name:"Direct",code:"DI",rev:280}].map(c=>{const cs=chStyle(c.name);return(
-                <div className="ch-row" key={c.name}>
-                  <span className="ch-left"><span className="ch-icon" style={{background:cs.bg,color:cs.color}}>{c.code}</span>{c.name}</span>
-                  <span style={{fontSize:12,color:"var(--mu)"}}>${c.rev}</span>
+          )}
+          {tab==="inventory"&&(
+            <Panel title="On hand — all flavors" dot="var(--gn-m)">
+              {inv.map(i=>(
+                <div className="inv-row" key={i.flavor}>
+                  <span style={{fontSize:12}}>{i.flavor}</span>
+                  <span className="i-qty">{i.bags}</span>
+                  <div className="bar-wrap"><div className="bar-fill" style={{width:`${Math.round(i.bags/i.max*100)}%`,background:barColor(i.bags,i.max)}}/></div>
                 </div>
-              );})}
+              ))}
             </Panel>
-            <Panel title="System alerts" dot="var(--am-m)">
-              <div className="a-row"><div className="a-icon a-warn">!</div><div><div>Choc Graham 15oz</div><span className="a-sub">SKU unmapped in SOS</span></div></div>
-              <div className="a-row"><div className="a-icon a-err">!</div><div><div>Spicy Choc Mint 45oz</div><span className="a-sub">column AD pending</span></div></div>
-              <div className="a-row"><div className="a-icon a-info">i</div><div><div>INV-97</div><span className="a-sub">2 days without fulfillment</span></div></div>
-            </Panel>
-            <Panel title="Integrations" dot="var(--hi)">
-              <div className="int-grid">
-                {[{n:"SOS Inv.",ok:true},{n:"ShipStation",ok:true},{n:"WooComm.",ok:true},{n:"HubSpot",ok:true},{n:"Klaviyo",ok:true},{n:"QuickBooks",ok:true},{n:"Zapier",ok:true},{n:"G Workspace",ok:true},{n:"Faire SKU",ok:false,note:"-R active"}].map(s=>(
-                  <div className="int-card" key={s.n}><div className="int-name">{s.n}</div><div className="int-st"><span className={s.ok?"d-live":"d-warn"}/>{s.note||(s.ok?"live":"warn")}</div></div>
-                ))}
-              </div>
-            </Panel>
-          </>
-        )}
-        {tab==="orders"&&(
-          <Panel title="All orders" dot="var(--bl-m)">
-            {orders.map(o=>(
-              <div className="order-row" key={o.id}>
-                <span className="o-id">{o.id}</span><span className="o-name">{o.customer}</span>
-                <div className="o-right"><span className={`badge ${o.status==="shipped"?"b-ship":"b-pend"}`}>{o.status}</span><span className="o-amt">${o.amount}</span></div>
-              </div>
-            ))}
-          </Panel>
-        )}
-        {tab==="inventory"&&(
-          <Panel title="On hand — all flavors" dot="var(--gn-m)">
-            {inv.map(i=>(
-              <div className="inv-row" key={i.flavor}>
-                <span style={{fontSize:12}}>{i.flavor}</span>
-                <span className="i-qty">{i.bags}</span>
-                <div className="bar-wrap"><div className="bar-fill" style={{width:`${Math.round(i.bags/i.max*100)}%`,background:barColor(i.bags,i.max)}}/></div>
-              </div>
-            ))}
-          </Panel>
-        )}
-        {tab==="product check"&&<ProductCheck/>}
-      </div>
+          )}
+        </div>
+      )}
     </>
   );
 }
 
 const MAX_ATTEMPTS = 5;
-const LOCKOUT_MS   = 5 * 60 * 1000;
+const LOCKOUT_MS = 5 * 60 * 1000;
 
 function PinScreen({ role, onSuccess, onBack }) {
-  const [digits, setDigits]       = useState([]);
-  const [error, setError]         = useState("");
-  const [attempts, setAttempts]   = useState(0);
-  const [lockedUntil, setLocked]  = useState(null);
-  const [checking, setChecking]   = useState(false);
-
+  const [digits, setDigits] = useState([]);
+  const [error, setError] = useState("");
+  const [attempts, setAttempts] = useState(0);
+  const [lockedUntil, setLocked] = useState(null);
+  const [checking, setChecking] = useState(false);
   const r = ROLES.find(x => x.id === role);
   const isLocked = lockedUntil && Date.now() < lockedUntil;
   const remaining = isLocked ? Math.ceil((lockedUntil - Date.now()) / 1000) : 0;
@@ -724,7 +865,7 @@ function PinScreen({ role, onSuccess, onBack }) {
         </div>
         <div className="pin-grid">
           {keys.map((k, i) => {
-            if (k === "")  return <div key={i} className="pin-key empty" />;
+            if (k === "") return <div key={i} className="pin-key empty" />;
             if (k === "del") return <button key={i} className="pin-key del" onClick={del} disabled={isLocked || checking}>⌫</button>;
             return <button key={i} className="pin-key" onClick={() => press(k)} disabled={isLocked || checking || digits.length >= 4}>{k}</button>;
           })}
@@ -738,12 +879,12 @@ function PinScreen({ role, onSuccess, onBack }) {
 
 export default function App(){
   const [screen, setScreen] = useState("roles");
-  const [role, setRole]     = useState(null);
+  const [role, setRole] = useState(null);
   const roleLabel = ROLES.find(r => r.id === role)?.name;
 
   function selectRole(id) { setRole(id); setScreen("pin"); }
-  function onPinSuccess()  { setScreen("app"); }
-  function switchRole()    { setRole(null); setScreen("roles"); }
+  function onPinSuccess() { setScreen("app"); }
+  function switchRole() { setRole(null); setScreen("roles"); }
 
   if (screen === "roles") return (
     <>
@@ -782,11 +923,10 @@ export default function App(){
             <button className="switch-btn" onClick={switchRole}>Switch</button>
           </div>
         </div>
-        {role === "admin"  && <AdminDashboard />}
-        {role === "baker"  && <BakerForm />}
+        {role === "admin" && <AdminDashboard />}
+        {role === "baker" && <BakerForm />}
         {role === "bagger" && <BaggerForm />}
       </div>
     </>
   );
 }
-
