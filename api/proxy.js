@@ -1,7 +1,7 @@
 export const config = { api: { bodyParser: false } };
 
 export default async function handler(req, res) {
-  const GAS_URL = "https://script.google.com/macros/s/AKfycbxp0OOtSZKJ_bW8kSoU7Bc7PKYNEGy9bScswDWTjN8CbxaDg9Wwp5tymCDc_6tMdq_g/exec";
+  const GAS_URL = "https://script.google.com/macros/s/AKfycbz7oUGFN8HizBlPIOgH4PCNrKl0LnNXMPL2GDO9iRLFUFxpOtwaHt14-Qqnqf4IVwlfHg/exec";
 
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -36,4 +36,4 @@ export default async function handler(req, res) {
   } catch (e) {
     return res.status(500).json({ success: false, error: e.message });
   }
-}
+}pro
