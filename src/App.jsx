@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import React from "react";
 
+import batchSizes from "./batch-sizes.json";
+import { pendingBake, saveBake, sendSavedBake, guessSize } from "./production-client.js";
+
 const APPS_SCRIPT_URL = "/api/proxy";
 const FLAVORS = ["Red Wine","White Wine","Tomato Basil","Garlic Herb","Buttermilk Bacon","Lavender Rosemary","Cracked Pepper & Sage","Spicy Chocolate Mint","Chocolate Graham","Graham Crackers"];
 const SHORTBREAD = ["Lavender Shortbread Single","Lavender Shortbread 6-Pack","Shortbread Cookies, Individually Packaged"];
@@ -346,6 +349,8 @@ function BakerForm(){
   const [fd,setFd]=useState({});
   const [active,setActive]=useState(null);
   const [status,setStatus]=useState(null);
+  const [message,setMessage]=useState("");
+  const [outbox,setOutbox]=useState(()=>{try{return pendingBake();}catch(e){return {invalid:true};}});
   const selFlavors=FLAVORS.filter(f=>selected.has(f));
 
   function toggleFlavor(f){
@@ -355,7 +360,7 @@ function BakerForm(){
 
   function setTotalOz(flavor,val){
     const oz=Math.max(0,val);
-    setFd(d=>({...d,[flavor]:{...d[flavor],totalOz:oz,split:{s45:oz,s15:0,s450:0}}}));
+    setFd(d=>({...d,[flavor]:{...d[flavor],totalOz:oz,split:{s45:oz,s15:0,s450:0},size:undefined,sizeOk:false}}));
   }
 
   function setSplit(flavor,skey,val){
@@ -398,18 +403,24 @@ function BakerForm(){
 
   async function submit(){
     if(status==="loading")return;
-    setStatus("loading");
-    const payload={
-      flavors:Object.fromEntries(selFlavors.map(f=>{
-        const data=fd[f]||emptyFD();const comp=computeFlavor(data);
-        return[f,{totalOz:data.totalOz,split:data.split,bags:comp.bags,rems:comp.rems,totalBags:comp.totalBags,totalRetail:comp.totalRetail}];
-      })),
-      summary:getSummary(),
-      timestamp:new Date().toISOString(),
-    };
-    const res=await apiCall("logBake",payload);
-    setStatus(res.success?"success":"error");
-    if(res.success)setTimeout(()=>{setStep(0);setSelected(new Set());setFd({});setStatus(null);},2500);
+    setStatus("loading");setMessage("");
+    try {
+      if(outbox?.invalid)throw new Error("Saved entry needs recovery; do not clear browser storage.");
+      if(!pendingBake()) {
+        const flavors=Object.fromEntries(selFlavors.map(f=>{
+          const data=fd[f]||emptyFD(),comp=computeFlavor(data);
+          const opts=batchSizes[f]||[],chosen=opts.find(o=>o.size===data.size);
+          if(!data.sizeOk||!chosen)throw new Error("Confirm the batch size for "+f+".");
+          if(data.totalOz<=0 || getAlloc(f).over || comp.totalBags<=0)throw new Error("Check the ounces and bag allocation.");
+          return [f,{totalOz:data.totalOz,split:data.split,bags:comp.bags,batches:[{recipeId:chosen.recipeId,count:1}]}];
+        }));
+        saveBake({flavors,timestamp:new Date().toISOString()});
+      }
+      setOutbox(pendingBake());
+      const result=await sendSavedBake();
+      setStatus("success");setOutbox(null);setMessage(result.posted?"Bake already posted to SOS.":"Bake saved once. Inventory posting is pending; do not enter it again.");
+      setSelected(new Set());setFd({});setStep(0);
+    } catch(e) {setStatus("error");setMessage(e.message);try{setOutbox(pendingBake());}catch(_){}}
   }
 
   const summary=step===2?getSummary():null;
@@ -420,6 +431,10 @@ function BakerForm(){
         <h2>Log completed bake</h2>
         <p>Record ounces produced per flavor — bags calculated automatically.</p>
       </div>
+      {message&&<div role="status">{message}</div>}
+      {outbox&&<div className="sum-warn">A bake is saved on this device. {outbox.timestamp} {outbox.flavors&&Object.keys(outbox.flavors).join(", ")}
+        <button disabled={status==="loading"||outbox.invalid} onClick={submit}>Send saved bake</button></div>}
+      <fieldset disabled={!!outbox || status==="loading"} style={{border:0,padding:0}}>
       <StepBar steps={["Flavors","Ounces","Review"]} current={step}/>
       {step===0&&(
         <>
@@ -537,19 +552,29 @@ function BakerForm(){
                     </span>
                   ))}
                 </div>
+                {(()=>{const opts=batchSizes[f]||[],size=data.size??guessSize(opts,data.totalOz);return(
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginTop:8}}>
+                    <span style={{fontSize:11,color:"var(--mu)"}}>Batch size:</span>
+                    {opts.map(o=>{const on=o.size===size;return(
+                      <button key={o.size} onClick={()=>setFd(d=>({...d,[f]:{...d[f],size:o.size,sizeOk:true}}))}
+                        style={{fontSize:12,padding:"6px 12px",borderRadius:20,border:"0.5px solid var(--bdr2)",background:on&&data.sizeOk?"var(--gn-m)":on?"var(--surf2)":"transparent",color:on&&data.sizeOk?"#fff":"var(--tx)",fontWeight:on?500:400,cursor:"pointer",fontFamily:"var(--mono)"}}>
+                        {on&&data.sizeOk?"✓ ":on?"Confirm ":""}{o.size}
+                      </button>);})}
+                  </div>);})()}
               </div>
             );
           })}
           <div className="action-row">
             <button className="sec-btn" onClick={()=>setStep(1)}>← Edit</button>
-            <button className="sub-btn" disabled={status==="loading"} onClick={submit}>
+            <button className="sub-btn" disabled={status==="loading"||selFlavors.some(f=>!(fd[f]||{}).sizeOk)} onClick={submit}>
               {status==="loading"?"Submitting…":"Submit bake"}
             </button>
           </div>
-          {status==="success"&&<div className="suc-box">Bake logged — Bake Planner updated.</div>}
-          {status==="error"&&<div className="err-box">Something went wrong — try again or update the sheet directly.</div>}
+          
+          
         </>
       )}
+      </fieldset>
     </div>
   );
 }
