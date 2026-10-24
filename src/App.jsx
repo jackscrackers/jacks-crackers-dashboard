@@ -1,8 +1,82 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import React from "react";
 
 import batchSizes from "./batch-sizes.json";
-import { pendingBake, saveBake, sendSavedBake, guessSize } from "./production-client.js";
+import { pendingBake, saveBake, sendSavedBake as sendExistingBake, guessSize } from "./production-client.js";
+
+const DRAFT_KEY='jc-bake-draft-v1';
+const RECEIPTS_KEY='jc-bake-receipts-v1';
+function readDraft(storage=localStorage){
+  try{
+    const raw=storage.getItem(DRAFT_KEY);if(!raw)return {};
+    const d=JSON.parse(raw);
+    if(d.version!==1||!Array.isArray(d.selected)||!d.fd||typeof d.fd!=='object'||Array.isArray(d.fd)||![0,1,2].includes(d.step))throw Error();
+    return d;
+  }catch(e){return {unreadable:true};}
+}
+function writeDraft(draft,storage=localStorage){storage.setItem(DRAFT_KEY,JSON.stringify({...draft,version:1}));}
+function readReceipts(storage=localStorage){try{const rows=JSON.parse(storage.getItem(RECEIPTS_KEY)||'[]');return Array.isArray(rows)?rows:[];}catch(e){return [];}}
+function rememberReceipt(payload,result,storage=localStorage){
+  const receipt={sessionId:payload.sessionId,timestamp:payload.timestamp,status:result.posted?'POSTED':'QUEUED',flavors:Object.entries(payload.flavors).map(([flavor,f])=>({flavor,totalOz:f.totalOz,bags:f.bags}))};
+  storage.setItem(RECEIPTS_KEY,JSON.stringify([receipt,...readReceipts(storage).filter(x=>x.sessionId!==receipt.sessionId)].slice(0,20)));
+  storage.removeItem(DRAFT_KEY);
+}
+function mergeReceipts(server,local){
+  const rows=new Map(local.map(r=>[r.sessionId,r]));
+  server.forEach(r=>rows.set(r.sessionId,r));
+  return [...rows.values()].sort((a,b)=>String(b.timestamp||'').localeCompare(String(a.timestamp||''))).slice(0,20);
+}
+
+const displayNumber=v=>typeof v==='number'&&Number.isFinite(v)?new Intl.NumberFormat('en-US',{maximumFractionDigits:1}).format(v):v===0?'0':v?String(v):'—';
+const when=value=>{const d=new Date(value);return value&&!isNaN(d)?d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Not available';};
+function useWorkspace(apiCall){
+  const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
+  const load=useCallback(async()=>{setLoading(true);const result=await apiCall('getBakeWorkspace');if(result.success&&Array.isArray(result.plan)&&Array.isArray(result.recent)){setData(result);setError('');}else setError('Current figures could not be loaded. Your entries are safe. Try loading the view again.');setLoading(false);},[]);
+  useEffect(()=>{load();const visible=()=>{if(document.visibilityState==='visible')load();};window.addEventListener('jc-bake-saved',load);document.addEventListener('visibilitychange',visible);const timer=setInterval(()=>{if(document.visibilityState==='visible')load();},60000);return()=>{clearInterval(timer);window.removeEventListener('jc-bake-saved',load);document.removeEventListener('visibilitychange',visible);};},[load]);
+  return {data,error,loading,load};
+}
+function ReadStatus({workspace}){
+ const {data,error,loading,load}=workspace;
+ return <div className="read-status"><p>{loading?'Loading saved figures…':data?'App last read these figures '+when(data.readAt):'No figures loaded.'} This does not run a spreadsheet or SOS update.</p>{error&&<p role="alert">{error}{data&&' Previously loaded figures remain below.'}</p>}<button className="sec-btn" disabled={loading} onClick={load}>Load latest saved figures</button></div>;
+}
+function PlanView({workspace,onKitchen,inventoryOnly=false}){
+ const data=workspace.data;
+ return <><ReadStatus workspace={workspace}/>{data&&<>
+ <div className="feed-status">{data.feeds.map(f=><div key={f.name}><strong>{f.name}:</strong> {f.status||'Unknown'} · Last success: {when(f.success)}{f.detail&&f.status!=='Updated'&&<p className="notice">{f.detail}</p>}</div>)}</div>
+ <p className="help">{inventoryOnly?'Stock is shown by package size. A dash means that size is not supplied by this stock view.':'These are the existing plan’s figures. Combined amounts use regular-bag equivalents; package quantities are shown separately. Batch estimates use the size already entered in the plan.'}</p>
+ <div className="plan-list">{data.plan.map(r=><article className="plan-card" key={r.flavor}>
+ <div className="plan-name"><h3>{r.flavor}</h3>{!inventoryOnly&&typeof r.needed==='number'&&r.needed>0&&<span className="badge b-pend">More needed</span>}</div>
+ {inventoryOnly?<div className="plan-numbers"><Figure label="Regular / single" value={r.stock.s45}/><Figure label="15 oz bags" value={r.stock.s15}/><Figure label="45 oz bags" value={r.stock.s450}/></div>:<><div className="plan-numbers"><Figure label="Customers waiting" value={r.waiting}/><Figure label="In stock" value={r.stockEquivalent}/><Figure label="Still to bake" value={r.needed}/><Figure label="Batches estimated" value={r.batchesNeeded}/></div>
+ <details><summary>Package quantities and plan details</summary><div className="package-details"><p>Stock: regular / single {displayNumber(r.stock.s45)} · 15 oz {displayNumber(r.stock.s15)} · 45 oz {displayNumber(r.stock.s450)}</p><p>Waiting: regular / single {displayNumber(r.demand.s45)} · 15 oz {displayNumber(r.demand.s15)} · 45 oz {displayNumber(r.demand.s450)} · 2 oz {displayNumber(r.demand.s2)}</p><p>Plan’s batch size: {displayNumber(r.batchSize)} · Planned batches: {displayNumber(r.plannedBatches)} · Planned output: {displayNumber(r.plannedOutput)}</p><p>{r.demandStatus}</p></div></details></>}
+ {Object.values(r.stock).some(x=>typeof x==='number'&&x<0)&&<p className="notice">A stock figure is negative and needs attention. It has been kept visible.</p>}
+ </article>)}</div>{!inventoryOnly&&<button className="sub-btn" onClick={onKitchen}>Record a completed bake</button>}
+ </>}</>;
+}
+function Figure({label,value}){return <div><span>{label}</span><strong>{displayNumber(value)}</strong></div>;}
+function RecentBakes({workspace}){
+ const [local,setLocal]=useState(readReceipts);
+ useEffect(()=>{const changed=()=>setLocal(readReceipts());window.addEventListener('jc-bake-saved',changed);return()=>window.removeEventListener('jc-bake-saved',changed);},[]);
+ const recent=mergeReceipts(workspace.data?.recent||[],local);
+ return <section className="recent-bakes"><h2>Recent bakes</h2><p className="help">Saved entries are shared through the app. Unfinished drafts stay on the device where you entered them.</p><ReadStatus workspace={workspace}/>
+ {!recent.length&&<p className="panel">{workspace.loading?'Loading recent bakes…':workspace.error?'Recent bakes are unavailable. This does not mean there are none.':'No saved bake records to show yet.'}</p>}
+ {recent.map(r=><article className="receipt" key={r.sessionId}>
+ <div className="plan-name"><strong>{when(r.timestamp)}</strong><span className={'badge '+(r.status==='POSTED'?'b-ship':'b-pend')}>{r.status==='POSTED'?'Reached SOS':r.status==='ATTENTION'?'Needs attention':r.status==='LEGACY'?'Earlier bake':'Saved · waiting for SOS'}</span></div>
+ <ul>{r.flavors.map(f=><li key={f.flavor}><strong>{f.flavor}</strong>{f.totalOz!=null&&<> · {displayNumber(f.totalOz)} oz</>}<div>{[['s45','4.5 oz'],['s15','15 oz'],['s450','45 oz']].filter(([key])=>f.bags?.[key]>0).map(([key,label])=>`${displayNumber(f.bags[key])} × ${label}`).join(' · ')}</div></li>)}</ul>
+ {r.status==='POSTED'?<p>SOS has recorded this bake.{r.recordIds?.length>0&&' Record '+r.recordIds.join(', ')+'.'} Stock figures follow the existing stock update.</p>:r.status==='LEGACY'?<p>Saved before automatic SOS tracking. Its SOS result is not supplied here.</p>:r.status==='ATTENTION'?<p className="notice">The bake is saved, but posting needs review. Do not enter it again or adjust stock to compensate. Keep this receipt for review.</p>:<p>The bake is saved. SOS posting normally runs every five minutes. Do not enter it again.</p>}
+ <small>Reference: {r.sessionId}</small></article>)}
+ </section>;
+}
+function Dashboard({workspace,onKitchen}){
+ const [view,setView]=useState('plan'),[orders,setOrders]=useState(null),[orderError,setOrderError]=useState('');
+ useEffect(()=>{if(view!=='orders'||orders)return;fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getOrders'})}).then(r=>{if(!r.ok)throw Error();return r.json();}).then(r=>{if(!r.success||!Array.isArray(r.orders))throw Error();setOrders(r.orders);}).catch(()=>setOrderError('Orders could not be loaded. No example orders are displayed.'));},[view,orders]);
+ return <div className="content"><div className="form-hdr"><h2>Your bake overview</h2><p>See what is needed, then record what you actually made.</p></div><nav className="nav" aria-label="Dashboard views">{[['plan','What needs baking'],['inventory','Inventory'],['orders','Recent orders'],['bakes','Recent bakes']].map(([key,label])=><button key={key} className={'nav-btn '+(view===key?'active':'')} aria-current={view===key?'page':undefined} onClick={()=>setView(key)}>{label}</button>)}</nav>
+ {view==='plan'&&<div className="dashboard-grid"><section><PlanView workspace={workspace} onKitchen={onKitchen}/></section><RecentBakes workspace={workspace}/></div>}
+ {view==='inventory'&&<PlanView workspace={workspace} inventoryOnly/>}
+ {view==='bakes'&&<RecentBakes workspace={workspace}/>}
+ {view==='orders'&&<section className="panel"><h3>Latest 20 orders in the saved order view</h3><p className="help">For baking quantities, use What needs baking. Amounts are omitted when the source does not supply them.</p>{orderError&&<p role="alert">{orderError}</p>}{!orders&&!orderError&&<p>Loading orders…</p>}{orders?.length===0&&<p>No orders supplied by this view.</p>}{orders?.map((o,i)=><div className="order-row" key={`${o.id}:${i}`}><span>{o.id}</span><strong>{o.customer}</strong><span>{o.status}</span></div>)}</section>}
+ </div>;
+}
+async function sendSavedBake(){const payload=pendingBake();const result=await sendExistingBake();try{rememberReceipt(payload,result);}catch(e){}return result;}
 
 const APPS_SCRIPT_URL = "/api/proxy";
 const FLAVORS = ["Red Wine","White Wine","Tomato Basil","Garlic Herb","Buttermilk Bacon","Lavender Rosemary","Cracked Pepper & Sage","Spicy Chocolate Mint","Chocolate Graham","Graham Crackers"];
@@ -26,10 +100,6 @@ const barColor=(b,m)=>{const p=b/m;return p>0.4?"var(--gn-m)":p>0.2?"var(--am-m)
 const chStyle=ch=>ch==="Faire"?{bg:"var(--tl-bg)",color:"var(--tl)"}:ch==="WooCommerce"?{bg:"var(--co-bg)",color:"var(--co)"}:{bg:"var(--bl-bg)",color:"var(--bl)"};
 const today=()=>new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
 
-const MOCK_INV=FLAVORS.map((flavor,i)=>({flavor,bags:[48,52,18,35,22,14,40,28,9,31][i],max:60}));
-const MOCK_SHORTBREAD_INV=SHORTBREAD.map(name=>({name,count:0}));
-const MOCK_ORDERS=[{id:"INV-101",customer:"Hanover Co-op",channel:"Faire",status:"pending",amount:186},{id:"INV-100",customer:"Website Retail",channel:"WooCommerce",status:"shipped",amount:34},{id:"INV-99",customer:"Monadnock Market",channel:"Direct",status:"shipped",amount:220},{id:"INV-98",customer:"Live Sales",channel:"Direct",status:"shipped",amount:62},{id:"INV-97",customer:"Peterborough Nat.",channel:"Direct",status:"pending",amount:155}];
-
 async function apiCall(action, payload={}) {
   try {
     if (action === "verifyPin") {
@@ -49,6 +119,8 @@ async function apiCall(action, payload={}) {
 }
 
 const CSS=`
+@import url('https://fonts.googleapis.com/css2?family=Mulish:wght@400;600;700&family=Patrick+Hand+SC&display=swap');
+
 @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Fraunces:opsz,wght@9..144,400;9..144,500&display=swap');
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#faf9f6;--surf:#fff;--surf2:#f4f3ef;--bdr:rgba(0,0,0,0.08);--bdr2:rgba(0,0,0,0.15);--tx:#1a1a18;--mu:#6b6b65;--hi:#9b9b94;--gn:#3B6D11;--gn-bg:#EAF3DE;--gn-m:#639922;--am:#854F0B;--am-bg:#FAEEDA;--am-m:#BA7517;--co:#993C1D;--co-bg:#FAECE7;--co-m:#D85A30;--bl:#185FA5;--bl-bg:#E6F1FB;--bl-m:#378ADD;--tl:#0F6E56;--tl-bg:#E1F5EE;--tl-m:#1D9E75;--mono:'DM Mono',monospace;--serif:'Fraunces',serif;--r:10px;--rl:14px}
@@ -168,6 +240,52 @@ html,body{height:100%;background:var(--bg);font-family:var(--mono);color:var(--t
 .pc-summary-bags.zero{color:var(--hi);font-weight:400}
 .pc-warn-box{background:var(--am-bg);color:var(--am);border-radius:var(--r);padding:12px 14px;font-size:12px;margin-bottom:14px;line-height:1.5}
 @media(min-width:540px){.metrics{grid-template-columns:repeat(4,1fr)}.flavor-grid{grid-template-columns:repeat(3,1fr)}}
+/* Additive sizing/layout only: bake arithmetic and bulk controls are unchanged. */
+html body{font-family:'Mulish',sans-serif;font-size:16px}
+body .shell{max-width:1280px;padding-bottom:48px}
+body .topbar h1,body .form-hdr h2,body h2,body h3,body .brand h1{font-family:'Patrick Hand SC',sans-serif;font-weight:bold}
+body .topbar h1{font-size:28px}body .form-hdr h2,body h2{font-size:30px}body h3{font-size:24px}
+body .topbar-role,body .topbar-date{font-size:13px;color:var(--mu)}
+body .section-nav{position:sticky;top:63px;z-index:9;display:flex;gap:8px;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--bdr)}
+body button,body input,body select{font-family:'Mulish',sans-serif}
+body .section-nav button{flex:1;min-height:48px;padding:8px;border:1px solid var(--bdr2);background:var(--surf);color:var(--tx);border-radius:8px;font-size:16px;font-weight:700}
+body .section-nav button.active,body .sub-btn,body .nav-btn.active{background:#e8be35;color:#262626;border-color:#e8be35}
+body .q-btn{width:46px;height:46px;font-size:22px}body .q-val{font-family:'Mulish',sans-serif;font-size:18px;min-width:40px}
+body .nav{padding:0 0 16px;flex-wrap:wrap;overflow:visible}
+body .nav-btn{min-height:44px;font-size:14px;letter-spacing:0;text-transform:none;white-space:normal;padding:8px 12px}
+body .sec-btn,body .sub-btn{min-height:48px;font-size:16px;flex:initial;padding:12px 16px}
+body .action-row .sub-btn{flex:2}body .action-row .sec-btn{flex:1}
+body .form-hdr p,body .help{font-size:16px;line-height:1.55;color:var(--mu);margin:8px 0 16px}
+body .f-chip{min-height:56px;text-align:left;font-size:16px;color:var(--tx)}body .chip-lbl{font-size:16px}
+body .step-item,body .step-lbl{font-size:14px}body .step-num{width:28px;height:28px;font-size:14px}
+body .fb-name,body .bf-name{font-size:17px}body .fb-tot{font-size:14px}
+body .oz-lbl{font-size:15px;width:52px}body .oz-conv{font-size:17px;min-width:88px}
+body .oz-row input{font-size:18px!important;min-height:48px}body .oz-row{gap:8px}
+body .sum-row{font-size:16px}body .sum-warn{font-size:15px;line-height:1.5}
+body .draft-note{font-size:14px;padding:12px;border-left:3px solid #e8be35;background:var(--surf2);margin-bottom:16px;line-height:1.5}
+body .read-status{padding:12px;background:var(--surf2);border-radius:8px;margin-bottom:14px;font-size:14px;line-height:1.5}
+body .read-status button{margin-top:8px;background:var(--surf);font-size:14px}
+body .feed-status{font-size:14px;line-height:1.6;margin-bottom:16px}
+body .plan-card,body .receipt{border:1px solid var(--bdr2);border-radius:12px;background:var(--surf);padding:16px;margin-bottom:12px;overflow-wrap:anywhere}
+body .plan-name{display:flex;align-items:center;gap:10px;justify-content:space-between;margin-bottom:12px;flex-wrap:wrap}
+body .plan-numbers{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;margin-bottom:12px}
+body .plan-numbers span{display:block;font-size:14px;color:var(--mu)}body .plan-numbers strong{display:block;font-size:23px;font-variant-numeric:tabular-nums;margin-top:4px}
+body .badge{font-size:13px;white-space:normal}
+body details summary{cursor:pointer;min-height:44px;padding:10px 0;font-size:15px}
+body .package-details{font-size:14px;line-height:1.65}
+body .notice{color:var(--co);background:var(--co-bg);padding:10px;border-radius:8px;font-size:15px;line-height:1.5;margin:8px 0}
+body .receipt p,body .receipt li{font-size:15px;line-height:1.6;margin-bottom:8px}body .receipt ul{padding-left:20px}
+body .receipt small{color:var(--mu);font-size:12px}body .recent-bakes h2{margin-bottom:10px}
+body .running-row{padding:12px 0;border-bottom:1px solid var(--bdr)}body .running-row p{line-height:1.6;font-size:15px}
+body .order-row{grid-template-columns:minmax(70px,1fr) minmax(0,2fr) auto;font-size:15px}
+body [hidden]{display:none!important}body .kitchen-aside{margin-top:24px}
+@media(min-width:850px){body .content{padding:24px}body .kitchen-layout{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:28px;align-items:start}body .kitchen-aside{margin-top:0;position:sticky;top:135px;max-height:calc(100vh - 150px);overflow-y:auto}body .dashboard-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:28px;align-items:start}body .plan-numbers{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:400px){body .oz-row{flex-wrap:wrap}body .oz-conv{margin-left:auto}body .section-nav{gap:4px;padding:8px}body .section-nav button{font-size:14px;padding:6px}body .step-item{gap:4px}body .step-sep{margin:0 4px}body .topbar-date{display:none}}
+body .content p,body .content label{font-size:16px!important}
+body .content button{min-height:44px}
+body .content button:not(.q-btn):not(.f-chip){font-size:15px!important}
+body .ab-lbl{font-size:14px}body .chip-lbl{color:var(--tx)}
+
 `;
 
 function Panel({title,dot,children}){
@@ -190,164 +308,18 @@ function StepBar({steps,current}){
   );
 }
 
-function ProductCheck(){
-  const emptyCounts = () => Object.fromEntries(FLAVORS.map(f => [f, { cases: 0, loose: 0 }]));
-  const [mode, setMode] = useState("count");
-  const [counts, setCounts] = useState(emptyCounts());
-  const [status, setStatus] = useState(null);
-  const [confirmed, setConfirmed] = useState(false);
-  const lastTap = React.useRef({});
-
-  const getBags = (f) => (counts[f].cases * 6) + counts[f].loose;
-  const totalBags = FLAVORS.reduce((sum, f) => sum + getBags(f), 0);
-
-  function debouncedChange(flavor, field, delta) {
-    const key = flavor + field;
-    const now = Date.now();
-    if (lastTap.current[key] && now - lastTap.current[key] < 120) return;
-    lastTap.current[key] = now;
-    setCounts(c => ({
-      ...c,
-      [flavor]: { ...c[flavor], [field]: Math.max(0, c[flavor][field] + delta) }
-    }));
-  }
-
-  async function submit() {
-    if (status === "loading") return;
-    setStatus("loading");
-    const inventory = Object.fromEntries(FLAVORS.map(f => [f, getBags(f)]));
-    const res = await apiCall("updateOnHand", {
-      inventory,
-      timestamp: new Date().toISOString(),
-    });
-    if (res.success) {
-      setMode("success");
-      setStatus(null);
-    } else {
-      setStatus("error");
-    }
-  }
-
-  if (mode === "success") {
-    return (
-      <div className="content" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "60vh", textAlign: "center", gap: 20 }}>
-        <div style={{ width: 64, height: 64, borderRadius: "50%", background: "var(--gn-bg)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 28 }}>✓</div>
-        <div>
-          <div style={{ fontFamily: "var(--serif)", fontSize: 22, fontWeight: 500, marginBottom: 8 }}>Count submitted</div>
-          <div style={{ fontSize: 12, color: "var(--mu)", lineHeight: 1.6 }}>Bake Planner On Hand has been updated.<br />Total: {totalBags} bags across {FLAVORS.length} flavors.</div>
-        </div>
-        <div style={{ background: "var(--surf2)", borderRadius: "var(--r)", padding: "14px 18px", width: "100%", maxWidth: 320 }}>
-          {FLAVORS.map(f => {
-            const bags = getBags(f);
-            return (
-              <div key={f} style={{ display: "flex", justifyContent: "space-between", padding: "5px 0", fontSize: 12, borderBottom: "0.5px solid var(--bdr)" }}>
-                <span style={{ color: "var(--mu)" }}>{f}</span>
-                <span style={{ fontWeight: 500, color: bags > 0 ? "var(--gn-m)" : "var(--hi)" }}>{bags} bags</span>
-              </div>
-            );
-          })}
-        </div>
-        <button className="sub-btn full" onClick={() => { setCounts(emptyCounts()); setConfirmed(false); setMode("count"); }} style={{ maxWidth: 320 }}>
-          New count
-        </button>
-      </div>
-    );
-  }
-
-  return (
-    <div className="content">
-      <div className="form-hdr">
-        <h2>Product Check</h2>
-        <p>Physical inventory count. Updates On Hand in the Bake Planner for all flavors.</p>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", marginBottom: 16 }}>
-        <div className="pc-toggle" style={{ flex: 1, marginBottom: 0 }}>
-          <button className={`pc-toggle-btn${mode === "count" ? " active" : ""}`} onClick={() => setMode("count")}>COUNT</button>
-          <button className={`pc-toggle-btn${mode === "summary" ? " active" : ""}`} onClick={() => setMode("summary")}>SUMMARY</button>
-        </div>
-        <span className={`pc-total-badge${totalBags > 0 ? " has-count" : ""}`} style={{ marginLeft: 10 }}>
-          {totalBags} bag{totalBags !== 1 ? "s" : ""}
-        </span>
-      </div>
-      {mode === "count" && (
-        <>
-          {FLAVORS.map(f => {
-            const bags = getBags(f);
-            return (
-              <div key={f} className="pc-flavor-block">
-                <div className="pc-flavor-name">{f}</div>
-                <div className="pc-input-row">
-                  <span className="pc-input-lbl">Cases (×6)</span>
-                  <div className="pc-counter">
-                    <button className="q-btn" style={{ width: 44, height: 44 }} onPointerDown={e => { e.preventDefault(); debouncedChange(f, "cases", -1); }}>−</button>
-                    <span className={`q-val${counts[f].cases > 0 ? " nz" : ""}`} style={{ minWidth: 44, fontSize: 18 }}>{counts[f].cases}</span>
-                    <button className="q-btn" style={{ width: 44, height: 44 }} onPointerDown={e => { e.preventDefault(); debouncedChange(f, "cases", 1); }}>+</button>
-                  </div>
-                </div>
-                <div className="pc-input-row">
-                  <span className="pc-input-lbl">Loose bags</span>
-                  <div className="pc-counter">
-                    <button className="q-btn" style={{ width: 44, height: 44 }} onPointerDown={e => { e.preventDefault(); debouncedChange(f, "loose", -1); }}>−</button>
-                    <span className={`q-val${counts[f].loose > 0 ? " nz" : ""}`} style={{ minWidth: 44, fontSize: 18 }}>{counts[f].loose}</span>
-                    <button className="q-btn" style={{ width: 44, height: 44 }} onPointerDown={e => { e.preventDefault(); debouncedChange(f, "loose", 1); }}>+</button>
-                  </div>
-                </div>
-                <div className={`pc-bag-total${bags === 0 ? " zero" : ""}`}>
-                  {bags === 0 ? "0 bags" : `${bags} bag${bags !== 1 ? "s" : ""} total`}
-                </div>
-              </div>
-            );
-          })}
-          <button className="sub-btn full" style={{ marginBottom: 12 }} disabled={totalBags === 0} onClick={() => { setConfirmed(false); setMode("summary"); }}>
-            Review & submit count →
-          </button>
-        </>
-      )}
-      {mode === "summary" && (
-        <>
-          <div className="pc-warn-box">
-            This will overwrite On Hand in the Bake Planner for all 10 flavors. Zeros will be written as zeros. Make sure your count is complete before submitting.
-          </div>
-          <Panel title="Count summary" dot="var(--gn-m)">
-            {FLAVORS.map(f => {
-              const bags = getBags(f);
-              return (
-                <div key={f} className="pc-summary-row">
-                  <span className="pc-summary-flavor">{f}</span>
-                  <span className={`pc-summary-bags${bags === 0 ? " zero" : ""}`}>
-                    {bags} bag{bags !== 1 ? "s" : ""}
-                    {counts[f].cases > 0 && (
-                      <span style={{ fontSize: 10, color: "var(--hi)", marginLeft: 6 }}>({counts[f].cases} cases + {counts[f].loose} loose)</span>
-                    )}
-                  </span>
-                </div>
-              );
-            })}
-          </Panel>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 14, padding: "10px 14px", background: "var(--surf2)", borderRadius: "var(--r)" }}>
-            <input type="checkbox" id="pc-confirm" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} style={{ width: 18, height: 18, cursor: "pointer", accentColor: "var(--gn-m)", flexShrink: 0 }} />
-            <label htmlFor="pc-confirm" style={{ fontSize: 12, color: "var(--mu)", cursor: "pointer", lineHeight: 1.4 }}>
-              I have counted all flavors and this count is accurate
-            </label>
-          </div>
-          <div className="action-row">
-            <button className="sec-btn" onClick={() => setMode("count")}>← Edit</button>
-            <button className="sub-btn" disabled={!confirmed || status === "loading"} onClick={submit}>
-              {status === "loading" ? "Updating…" : "Submit count"}
-            </button>
-          </div>
-          {status === "error" && <div className="err-box">Something went wrong — try again or update the sheet directly.</div>}
-        </>
-      )}
-    </div>
-  );
-}
-
-function BakerForm(){
-  const [step,setStep]=useState(0);
-  const [selected,setSelected]=useState(new Set());
-  const [fd,setFd]=useState({});
-  const [active,setActive]=useState(null);
+function BakerForm({workspace}){
+  const [draft]=useState(readDraft);
+  const [step,setStep]=useState(draft.step||0);
+  const [selected,setSelected]=useState(new Set((draft.selected||[]).filter(f=>FLAVORS.includes(f))));
+  const [fd,setFd]=useState(draft.fd||{});
+  const [active,setActive]=useState(draft.active||null);
+  const [draftError,setDraftError]=useState(draft.unreadable?'An unfinished entry could not be read. Keep this browser’s saved data and ask for recovery before entering another bake.':'');
+  useEffect(()=>{
+    if(draft.unreadable)return;
+    try{writeDraft({step,selected:[...selected],fd,active});setDraftError('');}
+    catch(e){setDraftError('This browser could not save your unfinished entry. Keep this page open until you submit.');}
+  },[step,selected,fd,active]);
   const [status,setStatus]=useState(null);
   const [message,setMessage]=useState("");
   const [outbox,setOutbox]=useState(()=>{try{return pendingBake();}catch(e){return {invalid:true};}});
@@ -411,6 +383,7 @@ function BakerForm(){
           const data=fd[f]||emptyFD(),comp=computeFlavor(data);
           const opts=batchSizes[f]||[],chosen=opts.find(o=>o.size===data.size);
           if(!data.sizeOk||!chosen)throw new Error("Confirm the batch size for "+f+".");
+          if(f==="Chocolate Graham"&&comp.bags.s450>0)throw new Error("Chocolate Graham with 45 oz bags cannot be sent automatically. Keep this entry for manual handling; do not submit it here.");
           if(data.totalOz<=0 || getAlloc(f).over || comp.totalBags<=0)throw new Error("Check the ounces and bag allocation.");
           return [f,{totalOz:data.totalOz,split:data.split,bags:comp.bags,batches:[{recipeId:chosen.recipeId,count:1}]}];
         }));
@@ -419,32 +392,35 @@ function BakerForm(){
       setOutbox(pendingBake());
       const result=await sendSavedBake();
       setStatus("success");setOutbox(null);setMessage(result.posted?"Bake already posted to SOS.":"Bake saved once. Inventory posting is pending; do not enter it again.");
-      setSelected(new Set());setFd({});setStep(0);
+      setSelected(new Set());setFd({});setStep(0);setActive(null);window.dispatchEvent(new Event("jc-bake-saved"));
     } catch(e) {setStatus("error");setMessage(e.message);try{setOutbox(pendingBake());}catch(_){}}
   }
 
   const summary=step===2?getSummary():null;
+  const unsupportedBulk=selected.has("Chocolate Graham")&&(fd["Chocolate Graham"]?.split?.s450||0)>0;
 
   return(
     <div className="content">
       <div className="form-hdr">
         <h2>Log completed bake</h2>
-        <p>Record ounces produced per flavor — bags calculated automatically.</p>
+        <p>Record ounces produced per flavor—bags calculated automatically.</p>
       </div>
-      {message&&<div role="status">{message}</div>}
+      <p className="draft-note" role="status">{draftError||'Unfinished entries save automatically on this device. They have not been submitted.'}</p>
+      {message&&<div className={status==='error'?'err-box':'suc-box'} role="status">{message}</div>}
       {outbox&&<div className="sum-warn">A bake is saved on this device. {outbox.timestamp} {outbox.flavors&&Object.keys(outbox.flavors).join(", ")}
         <button disabled={status==="loading"||outbox.invalid} onClick={submit}>Send saved bake</button></div>}
-      <fieldset disabled={!!outbox || status==="loading"} style={{border:0,padding:0}}>
+      <div className="kitchen-layout"><section>
+      <fieldset disabled={!!outbox || draft.unreadable || status==="loading"} style={{border:0,padding:0}}>
       <StepBar steps={["Flavors","Ounces","Review"]} current={step}/>
       {step===0&&(
         <>
           <p style={{fontSize:12,color:"var(--mu)",marginBottom:12}}>Which flavors were baked this session?</p>
           <div className="flavor-grid">
             {FLAVORS.map(f=>(
-              <div key={f} className={`f-chip${selected.has(f)?" sel":""}`} onClick={()=>toggleFlavor(f)}>
+              <button type="button" key={f} aria-pressed={selected.has(f)} className={`f-chip${selected.has(f)?" sel":""}`} onClick={()=>toggleFlavor(f)}>
                 <span className="chip-chk">{selected.has(f)?"✓":""}</span>
                 <span className="chip-lbl">{f}</span>
-              </div>
+              </button>
             ))}
           </div>
           <button className="sub-btn full" disabled={selected.size===0} onClick={()=>{setActive(selFlavors[0]);setStep(1);}}>
@@ -452,6 +428,7 @@ function BakerForm(){
           </button>
         </>
       )}
+      {unsupportedBulk&&<p className="notice" role="alert">Chocolate Graham with 45 oz bags needs manual handling. Automatic posting does not support that combination. Keep this draft; do not submit it here.</p>}
       {step===1&&active&&(()=>{
         const data=fd[active]||emptyFD();
         const alloc=getAlloc(active);
@@ -475,15 +452,15 @@ function BakerForm(){
                 </span>
               </div>
               <div className="oz-row" style={{marginBottom:14,paddingBottom:12,borderBottom:"0.5px solid var(--bdr)"}}>
-                <span style={{fontSize:12,color:"var(--tx)",fontWeight:500,marginRight:8,flexShrink:0}}>Total oz</span>
-                <input type="number" min="0" inputMode="numeric" value={data.totalOz||""} placeholder="0"
+                <label htmlFor="bake-total-oz" style={{fontSize:16,color:"var(--tx)",fontWeight:500,marginRight:8,flexShrink:0}}>Total oz</label>
+                <input id="bake-total-oz" type="number" min="0" inputMode="decimal" value={data.totalOz||""} placeholder="0"
                   onChange={e=>setTotalOz(active,parseFloat(e.target.value)||0)}
                   style={{width:80,padding:"6px 10px",border:"0.5px solid var(--bdr2)",borderRadius:"var(--r)",background:"var(--surf2)",color:"var(--tx)",fontFamily:"var(--mono)",fontSize:14,fontWeight:500,textAlign:"right"}}
                 />
               </div>
               {data.totalOz>0&&(
                 <>
-                  <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>Enter 15oz and 45oz quantities — 4.5oz fills automatically:</p>
+                  <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>Allocate ounces to 15oz and 45oz bags—4.5oz fills automatically. Changing total ounces resets the bulk allocation.</p>
                   {SIZES.map(sz=>{
                     const soz=data.split[sz.key]||0;
                     const b=floorBags(soz,sz.oz);const r=remOz(soz,sz.oz);
@@ -566,7 +543,7 @@ function BakerForm(){
           })}
           <div className="action-row">
             <button className="sec-btn" onClick={()=>setStep(1)}>← Edit</button>
-            <button className="sub-btn" disabled={status==="loading"||selFlavors.some(f=>!(fd[f]||{}).sizeOk)} onClick={submit}>
+            <button className="sub-btn" disabled={unsupportedBulk||status==="loading"||selFlavors.some(f=>!(fd[f]||{}).sizeOk)} onClick={submit}>
               {status==="loading"?"Submitting…":"Submit bake"}
             </button>
           </div>
@@ -575,6 +552,7 @@ function BakerForm(){
         </>
       )}
       </fieldset>
+      </section><aside className="kitchen-aside"><div className="panel"><h3>This unfinished bake</h3>{selFlavors.length===0?<p>No flavors selected yet.</p>:selFlavors.map(f=>{const data=fd[f]||emptyFD(),c=computeFlavor(data);return <div className="running-row" key={f}><strong>{f}</strong><p>{data.totalOz} oz total</p><p>{SIZES.map(sz=>`${c.bags[sz.key]} × ${sz.label}`).join(' · ')}</p></div>;})}<p className="help">Calculated from your ounces and bulk allocation. These figures are not submitted yet.</p></div><RecentBakes workspace={workspace}/></aside></div>
     </div>
   );
 }
@@ -582,6 +560,7 @@ function BakerForm(){
 function BaggerForm(){
   const [qtys,setQtys]=useState(emptyQtys());
   const [status,setStatus]=useState(null);
+  const [receipt,setReceipt]=useState(()=>{try{return JSON.parse(localStorage.getItem('jc-empty-bag-receipt')||'null');}catch(e){return null;}});
   const total=Object.values(qtys).reduce((a,b)=>a+b,0);
   const set=(f,v)=>setQtys(q=>({...q,[f]:Math.max(0,v)}));
 
@@ -590,170 +569,41 @@ function BaggerForm(){
     setStatus("loading");
     const res=await apiCall("logBagging",{quantities:qtys,timestamp:new Date().toISOString()});
     setStatus(res.success?"success":"error");
-    if(res.success)setQtys(emptyQtys());
+    if(res.success){const saved={timestamp:res.timestamp||new Date().toISOString(),quantities:{...qtys},total};setReceipt(saved);try{localStorage.setItem('jc-empty-bag-receipt',JSON.stringify(saved));}catch(e){}setQtys(emptyQtys());}
   }
 
   return(
     <div className="content">
-      <div className="form-hdr"><h2>Log bags made</h2><p>Enter the number of bags made per flavor for this session.</p></div>
+      <div className="form-hdr"><h2>Empty bag construction</h2><p>Record empty bags made for each flavor. This does not add finished crackers to stock.</p></div>
       {FLAVORS.map(f=>(
         <div key={f} className="bf-row">
           <span className="bf-name">{f}</span>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
-            <button className="q-btn" onClick={()=>set(f,qtys[f]-1)}>−</button>
+            <button className="q-btn" disabled={status==="loading"||status==="error"} onClick={()=>set(f,qtys[f]-1)}>−</button>
             <span className={`q-val${qtys[f]>0?" nz":""}`}>{qtys[f]}</span>
-            <button className="q-btn" onClick={()=>set(f,qtys[f]+1)}>+</button>
+            <button className="q-btn" disabled={status==="loading"||status==="error"} onClick={()=>set(f,qtys[f]+1)}>+</button>
           </div>
         </div>
       ))}
       <div style={{fontSize:12,color:"var(--mu)",textAlign:"right",margin:"12px 0"}}>Total: <strong style={{color:"var(--tx)"}}>{total} bag{total!==1?"s":""}</strong></div>
-      <button className="sub-btn full" disabled={total===0||status==="loading"} onClick={submit}>
+      <button className="sub-btn full" disabled={total===0||status==="loading"||status==="error"} onClick={submit}>
         {status==="loading"?"Submitting…":`Submit session — ${total} bag${total!==1?"s":""}`}
       </button>
-      {status==="success"&&<div className="suc-box">Session logged — thank you!</div>}
-      {status==="error"&&<div className="err-box">Something went wrong — try again or contact Kevin.</div>}
+      {status==="success"&&<div className="suc-box">Empty-bag session saved. Your counts are shown below.</div>}
+      {receipt&&<article className="receipt"><h3>Last saved empty-bag session</h3><p>{new Date(receipt.timestamp).toLocaleString()}</p>{Object.entries(receipt.quantities).filter(([,q])=>q>0).map(([f,q])=><p key={f}>{f}: {q} empty bags</p>)}<strong>Total: {receipt.total} empty bags</strong></article>}
+      {status==="error"&&<div className="err-box">The save was not confirmed. Keep these counts and check the Bagger Log before sending again, so the session is not counted twice.</div>}
     </div>
-  );
-}
-
-function AdminDashboard(){
-  const [tab,setTab]=useState("today");
-  const [inv,setInv]=useState(MOCK_INV);
-  const [orders,setOrders]=useState(MOCK_ORDERS);
-  const [alerts,setAlerts]=useState([]);
-
-  useEffect(()=>{
-    Promise.all([
-      apiCall("getInventory"),
-      apiCall("getOrders"),
-      apiCall("getAlerts"),
-    ]).then(([i,o,a])=>{
-      if(i.success&&i.inventory) setInv(i.inventory);
-      if(o.success&&o.orders) setOrders(o.orders);
-      if(a.success&&a.alerts) setAlerts(a.alerts);
-    });
-  },[]);
-
-  async function dismiss(id){
-    setAlerts(a=>a.filter(x=>x.id!==id));
-    await apiCall("clearAlert",{alertId:id});
-  }
-
-  const unread=alerts.length;
-
-  function relTime(ts){
-    try{
-      const diff=Date.now()-new Date(ts).getTime();
-      const m=Math.floor(diff/60000);
-      if(m<1) return "just now";
-      if(m<60) return m+"m ago";
-      const h=Math.floor(m/60);
-      if(h<24) return h+"h ago";
-      return Math.floor(h/24)+"d ago";
-    }catch(e){return "";}
-  }
-
-  return(
-    <>
-      <div className="nav">
-        {["today","orders","inventory","product check"].map(t=>(
-          <button key={t} className={`nav-btn${tab===t?" active":""}`} onClick={()=>setTab(t)}>
-            {t}
-            {t==="today"&&unread>0&&(
-              <span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:16,height:16,borderRadius:"50%",background:"var(--co-m)",color:"#fff",fontSize:9,fontWeight:700,marginLeft:6,verticalAlign:"middle"}}>{unread}</span>
-            )}
-          </button>
-        ))}
-      </div>
-      {tab==="product check" && <ProductCheck />}
-      {tab !== "product check" && (
-        <div className="content">
-          {tab==="today"&&(
-            <>
-              <div className="metrics" style={{marginTop:14}}>
-                <div className="metric m-green"><div className="m-label">Orders today</div><div className="m-val">7</div><div className="m-delta">+3 vs yesterday</div></div>
-                <div className="metric m-amber"><div className="m-label">Pending ship</div><div className="m-val">4</div><div className="m-delta">2 due today</div></div>
-                <div className="metric m-blue"><div className="m-label">Revenue 7d</div><div className="m-val">$1,240</div><div className="m-delta">all channels</div></div>
-                <div className="metric m-coral"><div className="m-label">Low stock</div><div className="m-val">2</div><div className="m-delta">below 20 bags</div></div>
-              </div>
-              {unread>0&&(
-                <div className="panel" style={{marginBottom:12}}>
-                  <div className="panel-title">
-                    <span className="pdot" style={{background:"var(--co-m)"}}/>
-                    production updates
-                    <span style={{marginLeft:"auto",fontSize:10,background:"var(--co-bg)",color:"var(--co)",padding:"2px 8px",borderRadius:10,fontWeight:500}}>{unread} new</span>
-                  </div>
-                  {alerts.map(a=>(
-                    <div key={a.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 0",borderBottom:"0.5px solid var(--bdr)"}}>
-                      <div style={{width:22,height:22,borderRadius:6,flexShrink:0,marginTop:1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,background:a.type==="bake"?"var(--am-bg)":"var(--tl-bg)",color:a.type==="bake"?"var(--am)":"var(--tl)"}}>
-                        {a.type==="bake"?"B":"P"}
-                      </div>
-                      <div style={{flex:1,minWidth:0}}>
-                        <div style={{fontSize:12,fontWeight:500}}>{a.title}</div>
-                        <div style={{fontSize:11,color:"var(--mu)",marginTop:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{a.summary}</div>
-                        <div style={{fontSize:10,color:"var(--hi)",marginTop:2}}>{relTime(a.timestamp)}</div>
-                      </div>
-                      <button onClick={()=>dismiss(a.id)} style={{fontSize:14,color:"var(--hi)",background:"none",border:"none",cursor:"pointer",padding:"0 4px",lineHeight:1,flexShrink:0,fontFamily:"var(--mono)",marginTop:2}}>×</button>
-                    </div>
-                  ))}
-                </div>
-              )}
-              <Panel title="Recent orders" dot="var(--bl-m)">
-                {orders.slice(0,5).map(o=>{const cs=chStyle(o.channel);return(
-                  <div className="order-row" key={o.id}>
-                    <span className="o-id">{o.id}</span><span className="o-name">{o.customer}</span>
-                    <div className="o-right"><span className="badge" style={{background:cs.bg,color:cs.color}}>{o.channel==="WooCommerce"?"WooComm":o.channel}</span><span className="o-amt">${o.amount}</span></div>
-                  </div>
-                );})}
-              </Panel>
-              <Panel title="Channels — 7 days" dot="var(--tl-m)">
-                {[{name:"WooCommerce",code:"WC",rev:340},{name:"Faire",code:"FA",rev:620},{name:"Direct",code:"DI",rev:280}].map(c=>{const cs=chStyle(c.name);return(
-                  <div className="ch-row" key={c.name}><span className="ch-left"><span className="ch-icon" style={{background:cs.bg,color:cs.color}}>{c.code}</span>{c.name}</span><span style={{fontSize:12,color:"var(--mu)"}}>${c.rev}</span></div>
-                );})}
-              </Panel>
-              <Panel title="Integrations" dot="var(--hi)">
-                <div className="int-grid">
-                  {[{n:"SOS Inv.",ok:true},{n:"WooComm.",ok:true},{n:"HubSpot",ok:true},{n:"Klaviyo",ok:true},{n:"Zapier",ok:true},{n:"G Workspace",ok:true}].map(s=>(
-                    <div className="int-card" key={s.n}><div className="int-name">{s.n}</div><div className="int-st"><span className={s.ok?"d-live":"d-warn"}/>{s.ok?"live":"warn"}</div></div>
-                  ))}
-                </div>
-              </Panel>
-            </>
-          )}
-          {tab==="orders"&&(
-            <Panel title="All orders" dot="var(--bl-m)">
-              {orders.map(o=>(
-                <div className="order-row" key={o.id}>
-                  <span className="o-id">{o.id}</span><span className="o-name">{o.customer}</span>
-                  <div className="o-right"><span className={`badge ${o.status==="shipped"?"b-ship":"b-pend"}`}>{o.status}</span><span className="o-amt">${o.amount}</span></div>
-                </div>
-              ))}
-            </Panel>
-          )}
-          {tab==="inventory"&&(
-            <Panel title="On hand — all flavors" dot="var(--gn-m)">
-              {inv.map(i=>(
-                <div className="inv-row" key={i.flavor}>
-                  <span style={{fontSize:12}}>{i.flavor}</span>
-                  <span className="i-qty">{i.bags}</span>
-                  <div className="bar-wrap"><div className="bar-fill" style={{width:`${Math.round(i.bags/i.max*100)}%`,background:barColor(i.bags,i.max)}}/></div>
-                </div>
-              ))}
-            </Panel>
-          )}
-        </div>
-      )}
-    </>
   );
 }
 
 export default function App(){
   const [screen, setScreen] = useState("roles");
   const [role, setRole] = useState(null);
+  const workspace=useWorkspace(apiCall);
   const roleLabel = ROLES.find(r => r.id === role)?.name;
 
   function selectRole(id) { setRole(id); setScreen("app"); }
-  function switchRole() { setRole(null); setScreen("roles"); }
+  function switchRole() { setScreen("roles"); }
 
   if (screen === "roles") return (
     <>
@@ -782,12 +632,13 @@ export default function App(){
             <h1>Jack's Crackers</h1>
             <span className="topbar-role">{roleLabel}</span>
             <span className="topbar-date">{today()}</span>
-            <button className="switch-btn" onClick={switchRole}>Switch</button>
+
           </div>
         </div>
-        {role === "admin" && <AdminDashboard />}
-        {role === "baker" && <BakerForm />}
-        {role === "bagger" && <BaggerForm />}
+        <nav className="section-nav" aria-label="App sections">{ROLES.map(r=><button key={r.id} onClick={()=>setRole(r.id)} aria-current={role===r.id?'page':undefined} className={role===r.id?'active':''}>{r.name}</button>)}</nav>
+        <div hidden={role!=="admin"}><Dashboard workspace={workspace} onKitchen={()=>setRole('baker')}/></div>
+        <div hidden={role!=="baker"}><BakerForm workspace={workspace}/></div>
+        <div hidden={role!=="bagger"}><BaggerForm/></div>
       </div>
     </>
   );
