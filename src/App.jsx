@@ -31,7 +31,7 @@ const displayNumber=v=>typeof v==='number'&&Number.isFinite(v)?new Intl.NumberFo
 const when=value=>{const d=new Date(value);return value&&!isNaN(d)?d.toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'Not available';};
 function useWorkspace(apiCall){
   const [data,setData]=useState(null),[error,setError]=useState(''),[loading,setLoading]=useState(true);
-  const load=useCallback(async()=>{setLoading(true);const result=await apiCall('getBakeWorkspace');if(result.success&&Array.isArray(result.plan)&&Array.isArray(result.recent)){setData(result);setError('');}else setError('Current figures could not be loaded. Your entries are safe. Try loading the view again.');setLoading(false);},[]);
+  const load=useCallback(async()=>{setLoading(true);const result=await apiCall('getBakeWorkspace');if(result.success&&Array.isArray(result.plan)&&Array.isArray(result.recent)){setData({...result,products:[...result.products].sort((a,b)=>Number(SHORTBREAD.includes(a))-Number(SHORTBREAD.includes(b))),plan:[...result.plan].sort((a,b)=>Number(SHORTBREAD.includes(a.flavor))-Number(SHORTBREAD.includes(b.flavor)))});setError('');}else setError('Current figures could not be loaded. Your entries are safe. Try loading the view again.');setLoading(false);},[]);
   useEffect(()=>{load();const visible=()=>{if(document.visibilityState==='visible')load();};window.addEventListener('jc-bake-saved',load);document.addEventListener('visibilitychange',visible);const timer=setInterval(()=>{if(document.visibilityState==='visible')load();},60000);return()=>{clearInterval(timer);window.removeEventListener('jc-bake-saved',load);document.removeEventListener('visibilitychange',visible);};},[load]);
   return {data,error,loading,load};
 }
@@ -87,7 +87,7 @@ function RecentBakes({workspace}){
  {!recent.length&&<p className="panel">{workspace.loading?'Loading recent bakes…':workspace.error?'Recent bakes are unavailable. This does not mean there are none.':'No saved bake records to show yet.'}</p>}
  {recent.map(r=><article className="receipt" key={r.sessionId}>
  <div className="plan-name"><strong>{when(r.timestamp)}</strong><span className={'badge '+(r.status==='POSTED'?'b-ship':'b-pend')}>{r.status==='POSTED'?'Reached SOS':r.status==='ATTENTION'?'Needs attention':r.status==='LEGACY'?'Earlier bake':'Saved · waiting for SOS'}</span></div>
- <ul>{r.flavors.map(f=><li key={f.flavor}><strong>{f.flavor}</strong>{f.totalOz!=null&&<> · {displayNumber(f.totalOz)} oz</>}<div>{[['s45','4.5 oz'],['s15','15 oz'],['s450','45 oz'],['s2','2 oz']].filter(([key])=>f.bags?.[key]>0).map(([key,label])=>`${displayNumber(f.bags[key])} × ${label}`).join(' · ')}</div></li>)}</ul>
+ <ul>{r.flavors.map(f=><li key={f.flavor}><strong>{f.flavor}</strong>{f.totalOz!=null&&<> · {displayNumber(f.totalOz)} oz</>}<div>{[['s45','4.5 oz'],['s15','15 oz'],['s450','45 oz'],['s2','2 oz']].filter(([key])=>f.bags?.[key]>0).map(([key,label])=>`${displayNumber(f.bags[key])} × ${key==='s45'&&SHORTBREAD.includes(f.flavor)?'packs':label}`).join(' · ')}</div></li>)}</ul>
  {r.status==='POSTED'?<p>SOS has recorded this bake.{r.recordIds?.length>0&&' Record '+r.recordIds.join(', ')+'.'} Stock figures follow the existing stock update.</p>:r.status==='LEGACY'?<p>Saved before automatic SOS tracking. Its SOS result is not supplied here.</p>:r.status==='ATTENTION'?<p className="notice">The bake is saved, but posting needs review. Do not enter it again or adjust stock to compensate. Keep this receipt for review.</p>:<p>The bake is saved. SOS posting normally runs every five minutes. Do not enter it again.</p>}
  <small>Reference: {r.sessionId}</small></article>)}
  </section>;
@@ -109,18 +109,23 @@ const APPS_SCRIPT_URL = "/api/proxy";
 const FLAVORS = ["Red Wine","White Wine","Tomato Basil","Garlic Herb","Buttermilk Bacon","Lavender Rosemary","Cracked Pepper & Sage","Spicy Chocolate Mint","Chocolate Graham","Graham Crackers"];
 const SHORTBREAD = ["Lavender Shortbread Single","Lavender Shortbread 6-Pack","Shortbread Cookies, Individually Packaged"];
 const SIZES = [{key:"s45",label:"4.5oz",oz:4.5,mult:1},{key:"s15",label:"15oz",oz:15,mult:4},{key:"s450",label:"45oz",oz:45,mult:10}];
-const KITCHEN_FLAVORS=[...FLAVORS,'Cluck Yeah!',...["Clementine Basil", "Coffee", "Cranberry Cornbread", "Dill", "Fire", "Lemon Pistachio", "Maple Apple", "Ranch", "Blueberry", "Egg Nog", "Mulled Wine", "Pumpkin", "Roasted Peach", "Spinach", "Strawberry", "Spent Grain"]];
-const KITCHEN_BATCH_SIZES={...batchSizes,...{"Clementine Basil":[{"size":30,"recipeId":993491,"name":"Clementine Basil Crackers 30"}],"Coffee":[{"size":20,"recipeId":750240,"name":"Coffee  Crackers  20"},{"size":40,"recipeId":750238,"name":"Coffee  Crackers  40 (copy)"}],"Cranberry Cornbread":[{"size":30,"recipeId":881949,"name":"Cranberry Cornbread Crackers 30"},{"size":40,"recipeId":881948,"name":"Cranberry Cornbread Crackers 40 (copy)"}],"Dill":[{"size":30,"recipeId":933459,"name":"Dill Cracker 30"},{"size":40,"recipeId":1276038,"name":"Dill Cracker 40"}],"Fire":[{"size":30,"recipeId":1302811,"name":"Fire Crackers 30 2022"},{"size":40,"recipeId":1291132,"name":"Fire Crackers * 40 2022"}],"Lemon Pistachio":[{"size":30,"recipeId":1015290,"name":"Lemon Pistachio Crackers  30"}],"Maple Apple":[{"size":30,"recipeId":1909745,"name":"Apple Maple Crackers  30 2024"},{"size":40,"recipeId":1880952,"name":"Apple Maple Crackers  40 2024"}],"Ranch":[{"size":32,"recipeId":1971629,"name":"Ranch Crackers"}],"Blueberry":[{"size":15,"recipeId":157779,"name":"Blueberry Crackers"}],"Egg Nog":[{"size":20,"recipeId":941922,"name":"Egg Nog Cracker"}],"Mulled Wine":[{"size":30,"recipeId":963285,"name":"Mulled Wine Crackers  30"}],"Pumpkin":[{"size":30,"recipeId":317972,"name":"Pumpkin Crackers 30"}],"Roasted Peach":[{"size":30,"recipeId":957183,"name":"Smoked Peach Crackers 30"}],"Spinach":[{"size":30,"recipeId":957725,"name":"Spinach  Crackers 30"},{"size":40,"recipeId":677262,"name":"Spinach  Cracker 40"}],"Strawberry":[{"size":30,"recipeId":863050,"name":"Strawberry Crackers 30"}],"Spent Grain":[{"size":40,"recipeId":1881830,"name":"Spent Grain Beer Cracker"}],"Cluck Yeah!":[{"size":40,"recipeId":2940474,"name":"Cluck Yeah! Crackers. 40"}]}};
+const SHORTBREAD_PACKS={"Lavender Shortbread Single":{"packageOz":2.3,"label":"single packs"},"Lavender Shortbread 6-Pack":{"packageOz":12,"label":"6-packs"},"Shortbread Cookies, Individually Packaged":{"packageOz":2.3,"label":"cookie packs"}};
+const KITCHEN_FLAVORS=[...[...FLAVORS,'Cluck Yeah!',...["Clementine Basil", "Coffee", "Cranberry Cornbread", "Dill", "Fire", "Lemon Pistachio", "Maple Apple", "Ranch", "Blueberry", "Egg Nog", "Mulled Wine", "Pumpkin", "Roasted Peach", "Spinach", "Strawberry", "Spent Grain"]],...SHORTBREAD];
+const KITCHEN_BATCH_SIZES={...{...batchSizes,...{"Clementine Basil":[{"size":30,"recipeId":993491,"name":"Clementine Basil Crackers 30"}],"Coffee":[{"size":20,"recipeId":750240,"name":"Coffee  Crackers  20"},{"size":40,"recipeId":750238,"name":"Coffee  Crackers  40 (copy)"}],"Cranberry Cornbread":[{"size":30,"recipeId":881949,"name":"Cranberry Cornbread Crackers 30"},{"size":40,"recipeId":881948,"name":"Cranberry Cornbread Crackers 40 (copy)"}],"Dill":[{"size":30,"recipeId":933459,"name":"Dill Cracker 30"},{"size":40,"recipeId":1276038,"name":"Dill Cracker 40"}],"Fire":[{"size":30,"recipeId":1302811,"name":"Fire Crackers 30 2022"},{"size":40,"recipeId":1291132,"name":"Fire Crackers * 40 2022"}],"Lemon Pistachio":[{"size":30,"recipeId":1015290,"name":"Lemon Pistachio Crackers  30"}],"Maple Apple":[{"size":30,"recipeId":1909745,"name":"Apple Maple Crackers  30 2024"},{"size":40,"recipeId":1880952,"name":"Apple Maple Crackers  40 2024"}],"Ranch":[{"size":32,"recipeId":1971629,"name":"Ranch Crackers"}],"Blueberry":[{"size":15,"recipeId":157779,"name":"Blueberry Crackers"}],"Egg Nog":[{"size":20,"recipeId":941922,"name":"Egg Nog Cracker"}],"Mulled Wine":[{"size":30,"recipeId":963285,"name":"Mulled Wine Crackers  30"}],"Pumpkin":[{"size":30,"recipeId":317972,"name":"Pumpkin Crackers 30"}],"Roasted Peach":[{"size":30,"recipeId":957183,"name":"Smoked Peach Crackers 30"}],"Spinach":[{"size":30,"recipeId":957725,"name":"Spinach  Crackers 30"},{"size":40,"recipeId":677262,"name":"Spinach  Cracker 40"}],"Strawberry":[{"size":30,"recipeId":863050,"name":"Strawberry Crackers 30"}],"Spent Grain":[{"size":40,"recipeId":1881830,"name":"Spent Grain Beer Cracker"}],"Cluck Yeah!":[{"size":40,"recipeId":2940474,"name":"Cluck Yeah! Crackers. 40"}]}},...{"Lavender Shortbread Single":[{"size":160,"recipeId":2897855,"name":"(Metric) Lavender Fields Shortbread Cookies Individual v3.0   70 Cookies  2x (copy) 1.25x"}],"Lavender Shortbread 6-Pack":[{"size":21.5,"recipeId":2813266,"name":"(Metric) Lavender Fields Shortbread Cookies 6Pack v3.0   70 Bars (copy) 2.15x"}],"Shortbread Cookies, Individually Packaged":[{"size":16,"recipeId":2007335,"name":"Shortbread Cookies"}]}};
 const shown=(data,name)=>data?.productVisibility?.[name]!==false;
 const TWO_OZ_FLAVORS = ['Buttermilk Bacon','Red Wine','White Wine','Garlic Herb','Cracked Pepper & Sage','Coffee'];
 const TWO_OZ_SIZE={key:'s2',label:'2oz',oz:2,mult:2/4.5};
-const kitchenSizes=flavor=>TWO_OZ_FLAVORS.includes(flavor)?[...SIZES,TWO_OZ_SIZE]:SIZES;
+const kitchenSizes=flavor=>SHORTBREAD_PACKS[flavor]?[{key:'s45',label:SHORTBREAD_PACKS[flavor].label,oz:SHORTBREAD_PACKS[flavor].packageOz,mult:1}]:TWO_OZ_FLAVORS.includes(flavor)?[...SIZES,TWO_OZ_SIZE]:SIZES;
 function computeKitchenFlavor(fd){
  const result=computeFlavor(fd),oz=fd.split.s2||0;
  result.bags.s2=floorBags(oz,2);result.rems.s2=remOz(oz,2);
  result.totalBags+=result.bags.s2;result.totalRetail+=result.bags.s2*2/4.5;
  result.allocOz+=oz;result.unalloc=Number((fd.totalOz-result.allocOz).toFixed(2));
  return result;
+}
+function computeKitchenProduct(flavor,data){
+ if(!SHORTBREAD_PACKS[flavor])return computeKitchenFlavor(data);
+ const count=data.packages||0;return {bags:{s45:count,s15:0,s450:0,s2:0},rems:{s45:0,s15:0,s450:0,s2:0},totalBags:count,totalRetail:0,allocOz:data.totalOz,unalloc:0};
 }
 const ROLES = [{id:"admin",icon:"🧑‍💼",name:"Kevin",desc:"Full dashboard"},{id:"baker",icon:"🥐",name:"Kitchen",desc:"Log completed bakes"},{id:"bagger",icon:"📦",name:"Bag Construction",desc:"Log bags made"}];
 const floorBags=(oz,sizeOz)=>oz<=0?0:Math.floor(oz/sizeOz);
@@ -408,15 +413,15 @@ function BakerForm({workspace}){
   function prevFlavor(){fi>0?setActive(selFlavors[fi-1]):setStep(0);}
 
   function getSummary(){
-    let totOz=0,totBags={s45:0,s15:0,s450:0,s2:0},totRetail=0;const rems=[];
+    let totOz=0,totBags={s45:0,s15:0,s450:0,s2:0},totRetail=0;const rems=[];const shortbreadPacks=[];
     selFlavors.forEach(f=>{
-      const data=fd[f]||emptyFD();const comp=computeKitchenFlavor(data);
+      const data=fd[f]||emptyFD();const comp=computeKitchenProduct(f,data);
       totOz+=data.totalOz;
-      kitchenSizes(f).forEach(sz=>{totBags[sz.key]+=comp.bags[sz.key];});
+      if(SHORTBREAD_PACKS[f])shortbreadPacks.push({flavor:f,count:comp.bags.s45});else kitchenSizes(f).forEach(sz=>{totBags[sz.key]+=comp.bags[sz.key];});
       totRetail+=comp.totalRetail;
       kitchenSizes(f).forEach(sz=>{if(comp.rems[sz.key]>0.01)rems.push(f+" "+sz.label);});
     });
-    return{totOz:parseFloat(totOz.toFixed(2)),totBags,totRetail,rems};
+    return{totOz:parseFloat(totOz.toFixed(2)),totBags,totRetail,rems,shortbreadPacks};
   }
 
   async function submit(){
@@ -426,12 +431,12 @@ function BakerForm({workspace}){
       if(outbox?.invalid)throw new Error("Saved entry needs recovery; do not clear browser storage.");
       if(!pendingBake()) {
         const flavors=Object.fromEntries(selFlavors.map(f=>{
-          const data=fd[f]||emptyFD(),comp=computeKitchenFlavor(data);
+          const data=fd[f]||emptyFD(),comp=computeKitchenProduct(f,data);
           const opts=KITCHEN_BATCH_SIZES[f]||[],chosen=opts.find(o=>o.size===data.size);
           if(!data.sizeOk||!chosen)throw new Error("Confirm the batch size for "+f+".");
           if(["Chocolate Graham","Cluck Yeah!"].includes(f)&&comp.bags.s450>0)throw new Error(f+" with 45 oz bags cannot be sent automatically. Keep this entry for manual handling; do not submit it here.");
           if(data.totalOz<=0 || getAlloc(f).over || comp.totalBags<=0)throw new Error("Check the ounces and bag allocation.");
-          return [f,{totalOz:data.totalOz,split:data.split,bags:comp.bags,batches:[{recipeId:chosen.recipeId,count:1}]}];
+          return [f,{totalOz:data.totalOz,...(SHORTBREAD_PACKS[f]?{packages:data.packages}:{}),split:data.split,bags:comp.bags,batches:[{recipeId:chosen.recipeId,count:1}]}];
         }));
         saveBake({flavors,timestamp:new Date().toISOString()});
       }
@@ -470,7 +475,6 @@ function BakerForm({workspace}){
               </button>
             ))}
           </div>
-          {workspace.data&&SHORTBREAD.some(name=>shown(workspace.data,name))&&<details className="panel"><summary>Seasonal and special-order shortbread</summary><p className="help">Lavender Shortbread Single, Lavender Shortbread 6-Pack, and individually packaged Shortbread Cookies remain in the plan. A production recipe must be selected for the specific order before Kitchen can post them.</p></details>}
           <button className="sub-btn full" disabled={selected.size===0} onClick={()=>{setActive(selFlavors[0]);setStep(1);}}>
             Next — enter ounces ({selected.size} flavor{selected.size!==1?"s":""})
           </button>
@@ -500,15 +504,15 @@ function BakerForm({workspace}){
                 </span>
               </div>
               <div className="oz-row" style={{marginBottom:14,paddingBottom:12,borderBottom:"0.5px solid var(--bdr)"}}>
-                <label htmlFor="bake-total-oz" style={{fontSize:16,color:"var(--tx)",fontWeight:500,marginRight:8,flexShrink:0}}>Total oz</label>
-                <input id="bake-total-oz" type="number" min="0" inputMode="decimal" value={data.totalOz||""} placeholder="0"
-                  onChange={e=>setTotalOz(active,parseFloat(e.target.value)||0)}
+                <label htmlFor="bake-total-oz" style={{fontSize:16,color:"var(--tx)",fontWeight:500,marginRight:8,flexShrink:0}}>{SHORTBREAD_PACKS[active]?"Finished packs":"Total oz"}</label>
+                <input id="bake-total-oz" type="number" min="0" inputMode="decimal" step={SHORTBREAD_PACKS[active]?1:"any"} value={(SHORTBREAD_PACKS[active]?data.packages:data.totalOz)||""} placeholder="0"
+                  onChange={e=>{const n=Math.max(0,parseFloat(e.target.value)||0);if(SHORTBREAD_PACKS[active]){const count=Math.floor(n),oz=Number((count*SHORTBREAD_PACKS[active].packageOz).toFixed(2));setFd(d=>({...d,[active]:{...d[active],packages:count,totalOz:oz,split:{s45:oz,s15:0,s450:0},size:undefined,sizeOk:false}}));}else setTotalOz(active,n);}}
                   style={{width:80,padding:"6px 10px",border:"0.5px solid var(--bdr2)",borderRadius:"var(--r)",background:"var(--surf2)",color:"var(--tx)",fontFamily:"var(--mono)",fontSize:14,fontWeight:500,textAlign:"right"}}
                 />
               </div>
               {data.totalOz>0&&(
                 <>
-                  <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>Allocate ounces to bulk bags; 4.5oz fills automatically. Changing total ounces resets allocations.</p>
+                  <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>{SHORTBREAD_PACKS[active]?"Enter the number of finished packs. Ingredients use the existing recipe batch confirmed on Review.":"Allocate ounces to bulk bags; 4.5oz fills automatically. Changing total ounces resets allocations."}</p>
                   {TWO_OZ_FLAVORS.includes(active)&&<p className="help">You can also allocate ounces to 2 oz bags below. These use standard packaging for now.</p>}
                   {kitchenSizes(active).map(sz=>{
                     const soz=data.split[sz.key]||0;
@@ -559,12 +563,13 @@ function BakerForm({workspace}){
             {[...SIZES,TWO_OZ_SIZE].map(sz=>summary.totBags[sz.key]>0&&(
               <div className="sum-row" key={sz.key}><span className="lbl">{sz.label} bags</span><span className="val" style={{color:"var(--gn-m)"}}>{summary.totBags[sz.key]}</span></div>
             ))}
+            {summary.shortbreadPacks.map(p=><div className="sum-row" key={p.flavor}><span className="lbl">{p.flavor}</span><span className="val">{p.count} packs</span></div>)}
             <hr className="sum-div"/>
             <div className="sum-row"><span className="lbl">Retail bag equivalents</span><span className="val" style={{color:"var(--bl-m)"}}>{displayNumber(summary.totRetail)}</span></div>
             {summary.rems.length>0&&<div className="sum-warn">Leftover oz (not counted): {summary.rems.join(", ")}</div>}
           </div>
           {selFlavors.map(f=>{
-            const data=fd[f]||emptyFD();const comp=computeKitchenFlavor(data);
+            const data=fd[f]||emptyFD();const comp=computeKitchenProduct(f,data);
             return(
               <div key={f} style={{background:"var(--surf)",border:"0.5px solid var(--bdr)",borderRadius:"var(--r)",padding:"10px 14px",marginBottom:8,fontSize:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
