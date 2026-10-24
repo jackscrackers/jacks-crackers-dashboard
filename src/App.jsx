@@ -39,11 +39,36 @@ function ReadStatus({workspace}){
  const {data,error,loading,load}=workspace;
  return <div className="read-status"><p>{loading?'Loading saved figures…':data?'App last read these figures '+when(data.readAt):'No figures loaded.'} This does not run a spreadsheet or SOS update.</p>{error&&<p role="alert">{error}{data&&' Previously loaded figures remain below.'}</p>}<button className="sec-btn" disabled={loading} onClick={load}>Load latest saved figures</button></div>;
 }
-function PlanView({workspace,onKitchen,inventoryOnly=false}){
+function ProductVisibility({workspace}){
+ const [changes,setChanges]=useState({}),[message,setMessage]=useState(''),[saving,setSaving]=useState(false);
  const data=workspace.data;
+ async function save(){setSaving(true);const result=await apiCall('saveProductVisibility',{products:changes});if(result.success){setChanges({});setMessage('Products shown in the app have been saved for all devices.');await workspace.load();}else setMessage(result.error||'The save could not be confirmed. Load the saved settings before trying again.');setSaving(false);}
+ return <section className="panel"><h2>Products shown in the app</h2><p className="help">Turn a product off when you are not making it. It disappears from Inventory, the bake overview, and new Kitchen choices. Stock records, recipes, and bake history stay saved. Unfinished bakes already on this device are kept.</p><ReadStatus workspace={workspace}/>{data&&<><fieldset disabled={saving} style={{border:0,padding:0}}>{data.products.map(name=><label className="visibility-row" key={name}><input type="checkbox" checked={changes[name]??shown(data,name)} onChange={e=>setChanges(c=>({...c,[name]:e.target.checked}))}/><span>{name}{!data.productionProducts.includes(name)&&<small>Special order: select a production recipe before recording a bake.</small>}</span></label>)}<button className="sub-btn" disabled={saving||!Object.keys(changes).length} onClick={save}>{saving?'Saving products…':'Save products shown'}</button></fieldset>{message&&<p role="status">{message}</p>}<p className="help">Returning flavors can be added to this list using their existing product records. Turning one on does not create a recipe or change production settings.</p></>}</section>;
+}
+function PlanEditor({workspace}){
+ const [edits,setEdits]=useState({}),[message,setMessage]=useState(''),[saving,setSaving]=useState(false);
+ const data={...workspace.data,plan:workspace.data.plan.filter(r=>shown(workspace.data,r.flavor))};
+ async function save(){
+  setSaving(true);setMessage('');
+  const result=await apiCall('saveBakePlan',{planDate:data.planDate,changes:Object.entries(edits).map(([flavor,e])=>({flavor,...e}))});
+  if(result.success){setEdits({});setMessage('Plan saved. This has not recorded a bake.');await workspace.load();}
+  else setMessage(result.error||'The save could not be confirmed. Keep these entries and load the saved plan before trying again.');
+  setSaving(false);
+ }
+ return <section className="panel plan-editor"><h3>Plan this day’s batches</h3><p className="help">Choose the batch size and number of batches for {data.planDate}. These are planning choices. Confirm the actual batch size when you record a completed bake.</p>
+ <fieldset disabled={saving} style={{border:0,padding:0}}>{data.plan.map(r=>{
+  const e=edits[r.flavor],value=e||{batchSize:r.batchSize,plannedBatches:r.plannedBatches};
+  const change=(key,v)=>setEdits(old=>({...old,[r.flavor]:{...(old[r.flavor]||{batchSize:r.batchSize,plannedBatches:r.plannedBatches,expected:[r.batchSize,r.plannedBatches]}),[key]:v===''?'':Number(v)}}));
+  return <div className="planning-row" key={r.flavor}><strong>{r.flavor}</strong><label>Batch size<input aria-label={r.flavor+' planning batch size'} type="number" inputMode="decimal" min="0.01" step="any" value={value.batchSize??''} onChange={ev=>change('batchSize',ev.target.value)}/></label><label>Planned batches<input aria-label={r.flavor+' planned batches'} type="number" inputMode="decimal" min="0" step="any" value={value.plannedBatches??''} onChange={ev=>change('plannedBatches',ev.target.value)}/></label></div>;
+ })}<button className="sub-btn" disabled={!Object.keys(edits).length||saving||Object.values(edits).some(e=>typeof e.batchSize!=='number'||e.batchSize<=0||typeof e.plannedBatches!=='number'||e.plannedBatches<0)} onClick={save}>{saving?'Saving plan…':'Save plan'}</button></fieldset>
+ {message&&<p role="status" className="help">{message}</p>}</section>;
+}
+function PlanView({workspace,onKitchen,inventoryOnly=false}){
+ const data=workspace.data?{...workspace.data,plan:workspace.data.plan.filter(r=>shown(workspace.data,r.flavor))}:null;
  return <><ReadStatus workspace={workspace}/>{data&&<>
  <div className="feed-status">{data.feeds.map(f=><div key={f.name}><strong>{f.name}:</strong> {f.status||'Unknown'} · Last success: {when(f.success)}{f.detail&&f.status!=='Updated'&&<p className="notice">{f.detail}</p>}</div>)}</div>
  <p className="help">{inventoryOnly?'Stock is shown by package size. A dash means that size is not supplied by this stock view.':'These are the existing plan’s figures. Combined amounts use regular-bag equivalents; package quantities are shown separately. Batch estimates use the size already entered in the plan.'}</p>
+ {!inventoryOnly&&<PlanEditor workspace={workspace}/>}
  <div className="plan-list">{data.plan.map(r=><article className="plan-card" key={r.flavor}>
  <div className="plan-name"><h3>{r.flavor}</h3>{!inventoryOnly&&typeof r.needed==='number'&&r.needed>0&&<span className="badge b-pend">More needed</span>}</div>
  {inventoryOnly?<div className="plan-numbers"><Figure label="Regular / single" value={r.stock.s45}/><Figure label="15 oz bags" value={r.stock.s15}/><Figure label="45 oz bags" value={r.stock.s450}/></div>:<><div className="plan-numbers"><Figure label="Customers waiting" value={r.waiting}/><Figure label="In stock" value={r.stockEquivalent}/><Figure label="Still to bake" value={r.needed}/><Figure label="Batches estimated" value={r.batchesNeeded}/></div>
@@ -61,7 +86,7 @@ function RecentBakes({workspace}){
  {!recent.length&&<p className="panel">{workspace.loading?'Loading recent bakes…':workspace.error?'Recent bakes are unavailable. This does not mean there are none.':'No saved bake records to show yet.'}</p>}
  {recent.map(r=><article className="receipt" key={r.sessionId}>
  <div className="plan-name"><strong>{when(r.timestamp)}</strong><span className={'badge '+(r.status==='POSTED'?'b-ship':'b-pend')}>{r.status==='POSTED'?'Reached SOS':r.status==='ATTENTION'?'Needs attention':r.status==='LEGACY'?'Earlier bake':'Saved · waiting for SOS'}</span></div>
- <ul>{r.flavors.map(f=><li key={f.flavor}><strong>{f.flavor}</strong>{f.totalOz!=null&&<> · {displayNumber(f.totalOz)} oz</>}<div>{[['s45','4.5 oz'],['s15','15 oz'],['s450','45 oz']].filter(([key])=>f.bags?.[key]>0).map(([key,label])=>`${displayNumber(f.bags[key])} × ${label}`).join(' · ')}</div></li>)}</ul>
+ <ul>{r.flavors.map(f=><li key={f.flavor}><strong>{f.flavor}</strong>{f.totalOz!=null&&<> · {displayNumber(f.totalOz)} oz</>}<div>{[['s45','4.5 oz'],['s15','15 oz'],['s450','45 oz'],['s2','2 oz']].filter(([key])=>f.bags?.[key]>0).map(([key,label])=>`${displayNumber(f.bags[key])} × ${label}`).join(' · ')}</div></li>)}</ul>
  {r.status==='POSTED'?<p>SOS has recorded this bake.{r.recordIds?.length>0&&' Record '+r.recordIds.join(', ')+'.'} Stock figures follow the existing stock update.</p>:r.status==='LEGACY'?<p>Saved before automatic SOS tracking. Its SOS result is not supplied here.</p>:r.status==='ATTENTION'?<p className="notice">The bake is saved, but posting needs review. Do not enter it again or adjust stock to compensate. Keep this receipt for review.</p>:<p>The bake is saved. SOS posting normally runs every five minutes. Do not enter it again.</p>}
  <small>Reference: {r.sessionId}</small></article>)}
  </section>;
@@ -69,10 +94,11 @@ function RecentBakes({workspace}){
 function Dashboard({workspace,onKitchen}){
  const [view,setView]=useState('plan'),[orders,setOrders]=useState(null),[orderError,setOrderError]=useState('');
  useEffect(()=>{if(view!=='orders'||orders)return;fetch('/api/proxy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'getOrders'})}).then(r=>{if(!r.ok)throw Error();return r.json();}).then(r=>{if(!r.success||!Array.isArray(r.orders))throw Error();setOrders(r.orders);}).catch(()=>setOrderError('Orders could not be loaded. No example orders are displayed.'));},[view,orders]);
- return <div className="content"><div className="form-hdr"><h2>Your bake overview</h2><p>See what is needed, then record what you actually made.</p></div><nav className="nav" aria-label="Dashboard views">{[['plan','What needs baking'],['inventory','Inventory'],['orders','Recent orders'],['bakes','Recent bakes']].map(([key,label])=><button key={key} className={'nav-btn '+(view===key?'active':'')} aria-current={view===key?'page':undefined} onClick={()=>setView(key)}>{label}</button>)}</nav>
+ return <div className="content"><div className="form-hdr"><h2>Your bake overview</h2><p>See what is needed, then record what you actually made.</p></div><nav className="nav" aria-label="Dashboard views">{[['plan','What needs baking'],['inventory','Inventory'],['orders','Recent orders'],['bakes','Recent bakes'],['products','Products shown']].map(([key,label])=><button key={key} className={'nav-btn '+(view===key?'active':'')} aria-current={view===key?'page':undefined} onClick={()=>setView(key)}>{label}</button>)}</nav>
  {view==='plan'&&<div className="dashboard-grid"><section><PlanView workspace={workspace} onKitchen={onKitchen}/></section><RecentBakes workspace={workspace}/></div>}
  {view==='inventory'&&<PlanView workspace={workspace} inventoryOnly/>}
  {view==='bakes'&&<RecentBakes workspace={workspace}/>}
+ {view==='products'&&<ProductVisibility workspace={workspace}/>}
  {view==='orders'&&<section className="panel"><h3>Latest 20 orders in the saved order view</h3><p className="help">For baking quantities, use What needs baking. Amounts are omitted when the source does not supply them.</p>{orderError&&<p role="alert">{orderError}</p>}{!orders&&!orderError&&<p>Loading orders…</p>}{orders?.length===0&&<p>No orders supplied by this view.</p>}{orders?.map((o,i)=><div className="order-row" key={`${o.id}:${i}`}><span>{o.id}</span><strong>{o.customer}</strong><span>{o.status}</span></div>)}</section>}
  </div>;
 }
@@ -82,6 +108,19 @@ const APPS_SCRIPT_URL = "/api/proxy";
 const FLAVORS = ["Red Wine","White Wine","Tomato Basil","Garlic Herb","Buttermilk Bacon","Lavender Rosemary","Cracked Pepper & Sage","Spicy Chocolate Mint","Chocolate Graham","Graham Crackers"];
 const SHORTBREAD = ["Lavender Shortbread Single","Lavender Shortbread 6-Pack","Shortbread Cookies, Individually Packaged"];
 const SIZES = [{key:"s45",label:"4.5oz",oz:4.5,mult:1},{key:"s15",label:"15oz",oz:15,mult:4},{key:"s450",label:"45oz",oz:45,mult:10}];
+const KITCHEN_FLAVORS=[...FLAVORS,'Cluck Yeah!'];
+const KITCHEN_BATCH_SIZES={...batchSizes,'Cluck Yeah!':[{size:40,recipeId:2940474,name:'Cluck Yeah! Crackers. 40'}]};
+const shown=(data,name)=>data?.productVisibility?.[name]!==false;
+const TWO_OZ_FLAVORS = ['Buttermilk Bacon','Red Wine','White Wine','Garlic Herb','Cracked Pepper & Sage'];
+const TWO_OZ_SIZE={key:'s2',label:'2oz',oz:2,mult:2/4.5};
+const kitchenSizes=flavor=>TWO_OZ_FLAVORS.includes(flavor)?[...SIZES,TWO_OZ_SIZE]:SIZES;
+function computeKitchenFlavor(fd){
+ const result=computeFlavor(fd),oz=fd.split.s2||0;
+ result.bags.s2=floorBags(oz,2);result.rems.s2=remOz(oz,2);
+ result.totalBags+=result.bags.s2;result.totalRetail+=result.bags.s2*2/4.5;
+ result.allocOz+=oz;result.unalloc=Number((fd.totalOz-result.allocOz).toFixed(2));
+ return result;
+}
 const ROLES = [{id:"admin",icon:"🧑‍💼",name:"Kevin",desc:"Full dashboard"},{id:"baker",icon:"🥐",name:"Kitchen",desc:"Log completed bakes"},{id:"bagger",icon:"📦",name:"Bag Construction",desc:"Log bags made"}];
 const floorBags=(oz,sizeOz)=>oz<=0?0:Math.floor(oz/sizeOz);
 const remOz=(oz,sizeOz)=>oz<=0?0:parseFloat((oz-floorBags(oz,sizeOz)*sizeOz).toFixed(2));
@@ -240,6 +279,12 @@ html,body{height:100%;background:var(--bg);font-family:var(--mono);color:var(--t
 .pc-summary-bags.zero{color:var(--hi);font-weight:400}
 .pc-warn-box{background:var(--am-bg);color:var(--am);border-radius:var(--r);padding:12px 14px;font-size:12px;margin-bottom:14px;line-height:1.5}
 @media(min-width:540px){.metrics{grid-template-columns:repeat(4,1fr)}.flavor-grid{grid-template-columns:repeat(3,1fr)}}
+body .visibility-row{display:flex;gap:12px;align-items:center;min-height:56px;padding:12px 0;border-bottom:1px solid var(--bdr)}body .visibility-row input{width:24px;height:24px;accent-color:#e8be35}body .visibility-row small{display:block;font-size:13px;margin-top:4px;color:var(--mu)}
+body .planning-row{display:grid;grid-template-columns:minmax(140px,2fr) 1fr 1fr;gap:12px;align-items:center;padding:12px 0;border-bottom:1px solid var(--bdr)}
+body .planning-row label{display:flex;flex-direction:column;gap:6px;font-size:14px}
+body .planning-row input{width:100%;min-height:48px;padding:10px;border:1px solid var(--bdr2);border-radius:8px;font:inherit;background:var(--surf);color:var(--tx)}
+body .plan-editor .sub-btn{margin-top:16px}
+@media(max-width:539px){body .planning-row{grid-template-columns:1fr 1fr}body .planning-row strong{grid-column:1/-1}}
 /* Additive sizing/layout only: bake arithmetic and bulk controls are unchanged. */
 html body{font-family:'Mulish',sans-serif;font-size:16px}
 body .shell{max-width:1280px;padding-bottom:48px}
@@ -311,7 +356,7 @@ function StepBar({steps,current}){
 function BakerForm({workspace}){
   const [draft]=useState(readDraft);
   const [step,setStep]=useState(draft.step||0);
-  const [selected,setSelected]=useState(new Set((draft.selected||[]).filter(f=>FLAVORS.includes(f))));
+  const [selected,setSelected]=useState(new Set((draft.selected||[]).filter(f=>KITCHEN_FLAVORS.includes(f))));
   const [fd,setFd]=useState(draft.fd||{});
   const [active,setActive]=useState(draft.active||null);
   const [draftError,setDraftError]=useState(draft.unreadable?'An unfinished entry could not be read. Keep this browser’s saved data and ask for recovery before entering another bake.':'');
@@ -323,7 +368,7 @@ function BakerForm({workspace}){
   const [status,setStatus]=useState(null);
   const [message,setMessage]=useState("");
   const [outbox,setOutbox]=useState(()=>{try{return pendingBake();}catch(e){return {invalid:true};}});
-  const selFlavors=FLAVORS.filter(f=>selected.has(f));
+  const selFlavors=KITCHEN_FLAVORS.filter(f=>selected.has(f));
 
   function toggleFlavor(f){
     setSelected(s=>{const n=new Set(s);n.has(f)?n.delete(f):n.add(f);return n;});
@@ -340,7 +385,7 @@ function BakerForm({workspace}){
       const cur=d[flavor]||emptyFD();
       const newSplit={...cur.split,[skey]:Math.max(0,parseFloat(val)||0)};
       if(skey!=="s45"){
-        const usedByLarger=(newSplit.s15||0)+(newSplit.s450||0);
+        const usedByLarger=(newSplit.s15||0)+(newSplit.s450||0)+(newSplit.s2||0);
         newSplit.s45=Math.max(0,parseFloat((cur.totalOz-usedByLarger).toFixed(2)));
       }
       return{...d,[flavor]:{...cur,split:newSplit}};
@@ -349,7 +394,7 @@ function BakerForm({workspace}){
 
   function getAlloc(flavor){
     const data=fd[flavor]||emptyFD();
-    const allocOz=parseFloat(SIZES.reduce((s,sz)=>s+(data.split[sz.key]||0),0).toFixed(2));
+    const allocOz=parseFloat(kitchenSizes(flavor).reduce((s,sz)=>s+(data.split[sz.key]||0),0).toFixed(2));
     const rem=parseFloat((data.totalOz-allocOz).toFixed(2));
     const pct=data.totalOz>0?Math.min(100,Math.round(allocOz/data.totalOz*100)):0;
     return{allocOz,rem,pct,over:rem<-0.01,exact:Math.abs(rem)<0.01};
@@ -362,13 +407,13 @@ function BakerForm({workspace}){
   function prevFlavor(){fi>0?setActive(selFlavors[fi-1]):setStep(0);}
 
   function getSummary(){
-    let totOz=0,totBags={s45:0,s15:0,s450:0},totRetail=0;const rems=[];
+    let totOz=0,totBags={s45:0,s15:0,s450:0,s2:0},totRetail=0;const rems=[];
     selFlavors.forEach(f=>{
-      const data=fd[f]||emptyFD();const comp=computeFlavor(data);
+      const data=fd[f]||emptyFD();const comp=computeKitchenFlavor(data);
       totOz+=data.totalOz;
-      SIZES.forEach(sz=>{totBags[sz.key]+=comp.bags[sz.key];});
+      kitchenSizes(f).forEach(sz=>{totBags[sz.key]+=comp.bags[sz.key];});
       totRetail+=comp.totalRetail;
-      SIZES.forEach(sz=>{if(comp.rems[sz.key]>0.01)rems.push(f+" "+sz.label);});
+      kitchenSizes(f).forEach(sz=>{if(comp.rems[sz.key]>0.01)rems.push(f+" "+sz.label);});
     });
     return{totOz:parseFloat(totOz.toFixed(2)),totBags,totRetail,rems};
   }
@@ -380,10 +425,10 @@ function BakerForm({workspace}){
       if(outbox?.invalid)throw new Error("Saved entry needs recovery; do not clear browser storage.");
       if(!pendingBake()) {
         const flavors=Object.fromEntries(selFlavors.map(f=>{
-          const data=fd[f]||emptyFD(),comp=computeFlavor(data);
-          const opts=batchSizes[f]||[],chosen=opts.find(o=>o.size===data.size);
+          const data=fd[f]||emptyFD(),comp=computeKitchenFlavor(data);
+          const opts=KITCHEN_BATCH_SIZES[f]||[],chosen=opts.find(o=>o.size===data.size);
           if(!data.sizeOk||!chosen)throw new Error("Confirm the batch size for "+f+".");
-          if(f==="Chocolate Graham"&&comp.bags.s450>0)throw new Error("Chocolate Graham with 45 oz bags cannot be sent automatically. Keep this entry for manual handling; do not submit it here.");
+          if(["Chocolate Graham","Cluck Yeah!"].includes(f)&&comp.bags.s450>0)throw new Error(f+" with 45 oz bags cannot be sent automatically. Keep this entry for manual handling; do not submit it here.");
           if(data.totalOz<=0 || getAlloc(f).over || comp.totalBags<=0)throw new Error("Check the ounces and bag allocation.");
           return [f,{totalOz:data.totalOz,split:data.split,bags:comp.bags,batches:[{recipeId:chosen.recipeId,count:1}]}];
         }));
@@ -397,7 +442,7 @@ function BakerForm({workspace}){
   }
 
   const summary=step===2?getSummary():null;
-  const unsupportedBulk=selected.has("Chocolate Graham")&&(fd["Chocolate Graham"]?.split?.s450||0)>0;
+  const unsupportedBulk=["Chocolate Graham","Cluck Yeah!"].some(f=>selected.has(f)&&(fd[f]?.split?.s450||0)>0);
 
   return(
     <div className="content">
@@ -416,19 +461,20 @@ function BakerForm({workspace}){
         <>
           <p style={{fontSize:12,color:"var(--mu)",marginBottom:12}}>Which flavors were baked this session?</p>
           <div className="flavor-grid">
-            {FLAVORS.map(f=>(
+            {workspace.data&&KITCHEN_FLAVORS.filter(f=>shown(workspace.data,f)).map(f=>(
               <button type="button" key={f} aria-pressed={selected.has(f)} className={`f-chip${selected.has(f)?" sel":""}`} onClick={()=>toggleFlavor(f)}>
                 <span className="chip-chk">{selected.has(f)?"✓":""}</span>
                 <span className="chip-lbl">{f}</span>
               </button>
             ))}
           </div>
+          {workspace.data&&SHORTBREAD.some(name=>shown(workspace.data,name))&&<details className="panel"><summary>Seasonal and special-order shortbread</summary><p className="help">Lavender Shortbread Single, Lavender Shortbread 6-Pack, and individually packaged Shortbread Cookies remain in the plan. A production recipe must be selected for the specific order before Kitchen can post them.</p></details>}
           <button className="sub-btn full" disabled={selected.size===0} onClick={()=>{setActive(selFlavors[0]);setStep(1);}}>
             Next — enter ounces ({selected.size} flavor{selected.size!==1?"s":""})
           </button>
         </>
       )}
-      {unsupportedBulk&&<p className="notice" role="alert">Chocolate Graham with 45 oz bags needs manual handling. Automatic posting does not support that combination. Keep this draft; do not submit it here.</p>}
+      {unsupportedBulk&&<p className="notice" role="alert">This Chocolate Graham or Cluck entry allocates ounces to unsupported 45 oz bags. Automatic posting does not support that combination. Keep this draft; do not submit it here.</p>}
       {step===1&&active&&(()=>{
         const data=fd[active]||emptyFD();
         const alloc=getAlloc(active);
@@ -460,8 +506,9 @@ function BakerForm({workspace}){
               </div>
               {data.totalOz>0&&(
                 <>
-                  <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>Allocate ounces to 15oz and 45oz bags—4.5oz fills automatically. Changing total ounces resets the bulk allocation.</p>
-                  {SIZES.map(sz=>{
+                  <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>Allocate ounces to bulk bags; 4.5oz fills automatically. Changing total ounces resets allocations.</p>
+                  {TWO_OZ_FLAVORS.includes(active)&&<p className="help">You can also allocate ounces to 2 oz bags below. These use standard packaging for now.</p>}
+                  {kitchenSizes(active).map(sz=>{
                     const soz=data.split[sz.key]||0;
                     const b=floorBags(soz,sz.oz);const r=remOz(soz,sz.oz);
                     const isAuto=sz.key==="s45";
@@ -507,29 +554,29 @@ function BakerForm({workspace}){
             <div className="sum-row"><span className="lbl">Flavors this bake</span><span className="val">{selFlavors.length}</span></div>
             <div className="sum-row"><span className="lbl">Total ounces</span><span className="val">{summary.totOz} oz</span></div>
             <hr className="sum-div"/>
-            {SIZES.map(sz=>summary.totBags[sz.key]>0&&(
+            {[...SIZES,TWO_OZ_SIZE].map(sz=>summary.totBags[sz.key]>0&&(
               <div className="sum-row" key={sz.key}><span className="lbl">{sz.label} bags</span><span className="val" style={{color:"var(--gn-m)"}}>{summary.totBags[sz.key]}</span></div>
             ))}
             <hr className="sum-div"/>
-            <div className="sum-row"><span className="lbl">Retail bag equivalents</span><span className="val" style={{color:"var(--bl-m)"}}>{summary.totRetail}</span></div>
+            <div className="sum-row"><span className="lbl">Retail bag equivalents</span><span className="val" style={{color:"var(--bl-m)"}}>{displayNumber(summary.totRetail)}</span></div>
             {summary.rems.length>0&&<div className="sum-warn">Leftover oz (not counted): {summary.rems.join(", ")}</div>}
           </div>
           {selFlavors.map(f=>{
-            const data=fd[f]||emptyFD();const comp=computeFlavor(data);
+            const data=fd[f]||emptyFD();const comp=computeKitchenFlavor(data);
             return(
               <div key={f} style={{background:"var(--surf)",border:"0.5px solid var(--bdr)",borderRadius:"var(--r)",padding:"10px 14px",marginBottom:8,fontSize:12}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:6}}>
                   <span style={{fontWeight:500}}>{f}</span><span style={{color:"var(--hi)"}}>{data.totalOz} oz</span>
                 </div>
                 <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>
-                  {SIZES.map(sz=>comp.bags[sz.key]>0&&(
+                  {kitchenSizes(f).map(sz=>comp.bags[sz.key]>0&&(
                     <span key={sz.key} style={{fontSize:11,background:"var(--gn-bg)",color:"var(--gn)",padding:"2px 8px",borderRadius:20}}>
                       {comp.bags[sz.key]} × {sz.label}
                       {comp.rems[sz.key]>0&&<span style={{color:"var(--am-m)"}}> (+{comp.rems[sz.key]}oz)</span>}
                     </span>
                   ))}
                 </div>
-                {(()=>{const opts=batchSizes[f]||[],size=data.size??guessSize(opts,data.totalOz);return(
+                {(()=>{const opts=KITCHEN_BATCH_SIZES[f]||[],size=data.size??guessSize(opts,data.totalOz);return(
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",marginTop:8}}>
                     <span style={{fontSize:11,color:"var(--mu)"}}>Batch size:</span>
                     {opts.map(o=>{const on=o.size===size;return(
@@ -552,7 +599,7 @@ function BakerForm({workspace}){
         </>
       )}
       </fieldset>
-      </section><aside className="kitchen-aside"><div className="panel"><h3>This unfinished bake</h3>{selFlavors.length===0?<p>No flavors selected yet.</p>:selFlavors.map(f=>{const data=fd[f]||emptyFD(),c=computeFlavor(data);return <div className="running-row" key={f}><strong>{f}</strong><p>{data.totalOz} oz total</p><p>{SIZES.map(sz=>`${c.bags[sz.key]} × ${sz.label}`).join(' · ')}</p></div>;})}<p className="help">Calculated from your ounces and bulk allocation. These figures are not submitted yet.</p></div><RecentBakes workspace={workspace}/></aside></div>
+      </section><aside className="kitchen-aside"><div className="panel"><h3>This unfinished bake</h3>{selFlavors.length===0?<p>No flavors selected yet.</p>:selFlavors.map(f=>{const data=fd[f]||emptyFD(),c=computeKitchenFlavor(data);return <div className="running-row" key={f}><strong>{f}</strong><p>{data.totalOz} oz total</p><p>{kitchenSizes(f).map(sz=>`${c.bags[sz.key]} × ${sz.label}`).join(' · ')}</p></div>;})}<p className="help">Calculated from your ounces and bulk allocation. These figures are not submitted yet.</p></div><RecentBakes workspace={workspace}/></aside></div>
     </div>
   );
 }
