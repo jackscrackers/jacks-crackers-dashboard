@@ -513,25 +513,25 @@ function BakerForm({workspace}){
               {data.totalOz>0&&(
                 <>
                   <p style={{fontSize:11,color:"var(--hi)",marginBottom:10}}>{SHORTBREAD_PACKS[active]?"Enter the number of finished packs. Ingredients use the existing recipe batch confirmed on Review.":"Allocate ounces to bulk bags; 4.5oz fills automatically. Changing total ounces resets allocations."}</p>
-                  {TWO_OZ_FLAVORS.includes(active)&&<p className="help">You can also allocate ounces to 2 oz bags below. These use standard packaging for now.</p>}
+                  {TWO_OZ_FLAVORS.includes(active)&&<p className="help">For 2 oz bags, each + adds one bag. The control shows the bag count and the ounces used. These use standard packaging for now.</p>}
                   {kitchenSizes(active).map(sz=>{
                     const soz=data.split[sz.key]||0;
                     const b=floorBags(soz,sz.oz);const r=remOz(soz,sz.oz);
                     const isAuto=sz.key==="s45";
                     return(
                       <div className="oz-row" key={sz.key}>
-                        <span className="oz-lbl">{sz.label}{isAuto&&<span style={{fontSize:9,color:"var(--hi)",marginLeft:4}}>auto</span>}</span>
+                        <span className="oz-lbl">{sz.key==="s2"?"2 oz bags":sz.label}{isAuto&&<span style={{fontSize:9,color:"var(--hi)",marginLeft:4}}>auto</span>}</span>
                         {isAuto?(
                           <input type="number" readOnly value={soz||""} style={{width:80,padding:"6px 10px",border:"0.5px solid var(--bdr)",borderRadius:"var(--r)",background:"var(--surf)",color:"var(--mu)",fontFamily:"var(--mono)",fontSize:14,fontWeight:500,textAlign:"right",cursor:"default"}}/>
                         ):(
                           <div className="oz-ctrl">
                             <button className="q-btn" onClick={()=>setSplit(active,sz.key,Math.max(0,soz-sz.oz))}>−</button>
-                            <span className={`q-val${soz>0?" nz":""}`}>{soz}</span>
+                            <span className={`q-val${soz>0?" nz":""}`}>{sz.key==="s2"?`${b} bag${b!==1?"s":""}`:soz}</span>
                             <button className="q-btn" onClick={()=>setSplit(active,sz.key,soz+sz.oz)}>+</button>
                           </div>
                         )}
                         <div className="oz-conv">
-                          {soz>0&&<><span className="bags">{b} bag{b!==1?"s":""}</span>{r>0&&<span className="rem"> +{r}oz</span>}</>}
+                          {soz>0&&(sz.key==="s2"?<><span className="bags">{soz} oz used</span>{r>0&&<span className="rem"> ({r} oz left over)</span>}</>:<><span className="bags">{b} bag{b!==1?"s":""}</span>{r>0&&<span className="rem"> +{r}oz</span>}</>)}
                         </div>
                       </div>
                     );
